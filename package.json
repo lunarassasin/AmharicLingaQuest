@@ -1,0 +1,21 @@
+{
+  "name": "amharic-linguaquest",
+  "version": "1.0.0",
+  "description": "A simple Amharic language learning app served with Node.js",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "amharic",
+    "language",
+    "learning",
+    "node",
+    "express"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
