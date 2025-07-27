@@ -3,12 +3,15 @@ const path = require('path');
 const app = express();
 const port = 3000;
 
-// Serve static files from the 'public' directory
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static files from the current directory (where index.js resides)
+// WARNING: This makes ALL files in your project directory publicly accessible.
+// Be careful not to expose sensitive files (like node_modules, .env, etc.)
+app.use(express.static(__dirname)); 
 
-// Route for the home page
+// Optionally, if you only want to serve index.html directly from the root
+// and still have other files served via static middleware:
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // Start the server
