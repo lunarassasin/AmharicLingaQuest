@@ -1,0 +1,15 @@
+body { font-family: 'Inter', sans-serif; }
+.main-card { min-height: 550px; }
+.btn { transition: all 0.2s ease-in-out; }
+.btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.correct { background-color: #22c55e !important; color: white !important; border-color: #16a34a; }
+.incorrect { background-color: #ef4444 !important; color: white !important; border-color: #dc2626; }
+.selected { background-color: #3b82f6 !important; color: white !important; border-color: #2563eb; }
+.matched { background-color: #a3e635 !important; color: #3f6212 !important; border-color: #65a30d; opacity: 0.7; }
+.hidden { display: none; }
+#mic-btn.listening { animation: pulse 1.5s infinite; }
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
