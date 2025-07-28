@@ -62,6 +62,69 @@ const speak = (text, lang) => {
     }
 };
 
+async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
+    try {
+        const languagePair = "German to Amharic";
+        const sentenceContext = "a simple sentence for a beginner about daily life, using a noun.";
+        const exampleWord = "Wasser"; // You could even prompt for a specific word type
+
+        const prompt = `Generate a very simple German sentence for a language learner, then translate it to Amharic. The sentence should include a blank '____' where a single German noun can fit, and its corresponding Amharic translation should also have a blank.
+        Example: "Mein Name ist ____. -> ስሜ ____ ነው።"
+        Requirement: The blank should be replaceable by a single word from my vocabulary.
+        Output format: German: "Your German sentence ____.", Amharic: "Your Amharic sentence ____.", BlankWord: "German word for the blank"`;
+        // This prompt needs careful crafting to get the exact output format you want.
+
+        const response = await fetch(`/api/generate-ai-sentence?prompt=${encodeURIComponent(prompt)}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        const generatedText = data.generatedText;
+
+        // You'll need robust parsing logic here to extract German, Amharic, and BlankWord
+        // from the generatedText. This is the trickiest part with LLMs.
+        // For demonstration, let's assume it always returns something like:
+        // "German: "Ich mag ____.", Amharic: "እኔ ____ እወዳለሁ።", BlankWord: "Essen""
+        const parsed = parseLLMOutput(generatedText); // Implement this helper function
+
+        if (!parsed || !parsed.german || !parsed.amharic || !parsed.blank) {
+            throw new Error("Invalid output format from AI.");
+        }
+
+        state.shuffledData = [{
+            german: parsed.german,
+            amharic: parsed.amharic,
+            blank: parsed.blank
+        }];
+        state.currentQuestionIndex = 0;
+        updateProgress(1);
+        displayFillBlankQuestion(); // Reuse existing display logic
+
+    } catch (error) {
+        console.error('Failed to generate AI-powered sentence:', error);
+        alert('Could not load AI-generated exercise. Please check server logs.');
+        showMainMenu();
+    }
+}
+
+// Helper function to parse LLM output (crucial and can be tricky)
+function parseLLMOutput(text) {
+    const germanMatch = text.match(/German: "(.*?)"/);
+    const amharicMatch = text.match(/Amharic: "(.*?)"/);
+    const blankMatch = text.match(/BlankWord: "(.*?)"/);
+
+    if (germanMatch && amharicMatch && blankMatch) {
+        return {
+            german: germanMatch[1],
+            amharic: amharicMatch[1],
+            blank: blankMatch[1]
+        };
+    }
+    return null; // Or throw an error
+}
+
+// In startExercise for 'fill-blank' mode:
+// await fetchAndDisplayGeneratedFillBlankSentenceAI(); // Call the AI version
 // --- FETCH VOCABULARY FROM SERVER ---
 async function fetchVocabulary() {
     try {
