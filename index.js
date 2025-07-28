@@ -3,9 +3,13 @@ require('dotenv').config(); // Load environment variables from .env file
 const express = require('express');
 const path = require('path');
 const mysql = require('mysql2/promise'); // Using promise-based MySQL client
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 // Middleware to parse JSON bodies (if you add POST/PUT requests later)
 app.use(express.json());
@@ -34,6 +38,24 @@ pool.getConnection()
         // Optionally exit the process if DB connection is critical
         // process.exit(1);
     });
+
+app.get('/api/generate-ai-sentence', async (req, res) => {
+    const { prompt } = req.query; // Expect a prompt from the client
+    if (!prompt) {
+        return res.status(400).json({ message: 'Prompt is required.' });
+    }
+
+    try {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+        res.json({ generatedText: text });
+    } catch (error) {
+        console.error('Error calling Gemini API:', error);
+        res.status(500).json({ message: 'Failed to generate content with AI.', error: error.message });
+    }
+});
+
 
 // --- API Endpoint to Fetch Vocabulary ---
 app.get('/api/vocabulary', async (req, res) => {
