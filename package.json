@@ -16,6 +16,8 @@
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.19.2"
+    "dotenv": "^16.4.5",  <-- This line will be added
+    "express": "^4.19.2",
+    "mysql2": "^3.10.0"   <-- This line will be added
   }
 }
