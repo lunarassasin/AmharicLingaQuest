@@ -3,7 +3,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs'); // For hashing passwords
 const jwt = require('jsonwebtoken'); // For creating JSON Web Tokens
-const db = require('../config/db'); // Our database connection pool
+const db = require('./db'); // Our database connection pool
 
 // --- INITIALIZE ROUTER ---
 const router = express.Router();
