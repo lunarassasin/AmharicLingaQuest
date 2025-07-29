@@ -1,4 +1,4 @@
-// public/script.js
+// script.js (Frontend)
 
 // --- DATA (will be fetched from server) ---
 let vocabulary = [];
@@ -16,8 +16,8 @@ let state = {
     selectedAmharic: null,
     matchedPairs: 0,
     userToken: localStorage.getItem('jwtToken') || null, // Store JWT token
-    userId: localStorage.getItem('userId') || null,       // Store User ID
-    username: localStorage.getItem('username') || null,   // Store Username
+    userId: localStorage.getItem('userId') || null,        // Store User ID
+    username: localStorage.getItem('username') || null,    // Store Username
 };
 
 // --- SPEECH RECOGNITION SETUP ---
@@ -69,7 +69,8 @@ const ui = {
 };
 const micBtn = document.getElementById('mic-btn');
 const speechFeedback = document.getElementById('speech-feedback');
-const nextSpeakingBtn = document.getElementById('next-speaking-btn');
+// Removed nextSpeakingBtn as auto-advance is handled or it's not needed with the new flow.
+// If you want a manual 'Next' button for speaking, add it back to HTML and here.
 
 
 // --- LOCAL STORAGE ---
@@ -105,22 +106,9 @@ const speak = (text, lang) => {
     }
 };
 
-// Helper function to parse LLM output (crucial and can be tricky)
-function parseLLMOutput(text) {
-    const germanMatch = text.match(/German: "(.*?)"/);
-    const amharicMatch = text.match(/Amharic: "(.*?)"/);
-    const blankMatch = text.match(/BlankWord: "(.*?)"/);
-
-    if (germanMatch && amharicMatch && blankMatch) {
-        return {
-            german: germanMatch[1],
-            amharic: amharicMatch[1],
-            blank: blankMatch[1]
-        };
-    }
-    console.error("Failed to parse LLM output:", text);
-    return null;
-}
+// --- REMOVED: parseLLMOutput function ---
+// This function is no longer needed on the frontend because the backend
+// now handles parsing the raw AI response and sends a structured JSON object.
 
 
 // --- AUTHENTICATION FUNCTIONS ---
@@ -324,6 +312,7 @@ async function startExercise(mode) {
             break;
         case 'fill-blank':
             exerciseTitle.textContent = 'Lückentext';
+            // Directly call the AI generation and display for fill-blank
             await fetchAndDisplayGeneratedFillBlankSentenceAI();
             break;
         case 'listening':
@@ -345,6 +334,8 @@ async function startExercise(mode) {
 }
 
 function nextQuestion() {
+    // For fill-blank, we always fetch a new AI sentence.
+    // This effectively means each "question" is a new AI call.
     if (state.exerciseMode === 'fill-blank') {
         fetchAndDisplayGeneratedFillBlankSentenceAI();
         return;
@@ -367,10 +358,14 @@ function nextQuestion() {
 }
 
 function updateProgress(total) {
+    // For fill-blank, since it's one AI-generated sentence at a time,
+    // progress can be simplified or managed differently if you want a "session" of AI questions.
+    // For now, it will show 100% after each AI question, which is fine if each AI call is a distinct "round".
     progressBar.style.width = `${((state.currentQuestionIndex + 1) / total) * 100}%`;
 }
 
-function handleAnswer(isCorrect) {
+// --- MODIFIED: handleAnswer with correct answer display ---
+function handleAnswer(isCorrect, correctAnswerProvided = null) {
     if (isCorrect) {
         state.score++;
         state.currentStreak++;
@@ -379,33 +374,34 @@ function handleAnswer(isCorrect) {
             saveProgress();
         }
         feedbackMessage.textContent = 'Richtig!';
-        feedbackMessage.style.color = '#22c55e';
+        feedbackMessage.style.color = '#22c55e'; // Green
     } else {
         state.currentStreak = 0;
-        feedbackMessage.textContent = 'Falsch!';
-        feedbackMessage.style.color = '#ef4444';
+        // Display the correct answer if provided (for fill-blank, vocab, listening)
+        if (correctAnswerProvided) {
+            feedbackMessage.textContent = `Falsch! Die richtige Antwort war "${correctAnswerProvided}"`;
+        } else {
+            feedbackMessage.textContent = 'Falsch!';
+        }
+        feedbackMessage.style.color = '#ef4444'; // Red
     }
     exerciseStreak.textContent = `🔥 ${state.currentStreak}`;
 
-    if (state.exerciseMode === 'fill-blank') {
-        const sentenceContainer = document.getElementById('fill-blank-sentence');
-        if (isCorrect) {
-             const questionData = state.shuffledData[state.currentQuestionIndex];
-             const correctAnswerAmharic = vocabulary.find(v => v.german === questionData.blank)?.amharic;
-             if (correctAnswerAmharic) {
-                sentenceContainer.innerHTML = questionData.amharic.replace('____', `<span class="font-bold text-green-600">${correctAnswerAmharic}</span>`);
-             }
+    // Disable options/buttons after an answer is given for relevant exercises
+    if (state.exerciseMode === 'vocabulary' || state.exerciseMode === 'listening' || state.exerciseMode === 'fill-blank') {
+        const optionsContainer = document.getElementById(
+            state.exerciseMode === 'vocabulary' ? 'vocab-options' :
+            (state.exerciseMode === 'listening' ? 'listening-options' : 'fill-blank-options')
+        );
+        if (optionsContainer) {
+            optionsContainer.querySelectorAll('button').forEach(b => b.disabled = true);
         }
-        const optionsContainer = document.getElementById('fill-blank-options');
-        optionsContainer.querySelectorAll('button').forEach(b => b.disabled = true);
-
-        setTimeout(() => {
-            nextQuestion();
-        }, 2000);
-        return;
     }
-
-    setTimeout(nextQuestion, 1500);
+    
+    // Auto-advance for most quizzes after a short delay
+    if (state.exerciseMode !== 'matching' && state.exerciseMode !== 'speaking') {
+        setTimeout(nextQuestion, 1500);
+    }
 }
 
 
@@ -427,14 +423,14 @@ function displayVocabularyQuestion() {
     options.forEach(opt => {
         const btn = document.createElement('button');
         btn.textContent = opt;
-        btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-4 px-4 rounded-lg';
+        btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-4 px-4 rounded-lg hover:bg-gray-100 transition-colors duration-200';
         btn.onclick = () => {
-            handleAnswer(opt === correctAnswer);
+            handleAnswer(opt === correctAnswer, correctAnswer); // Pass correct answer
             btn.classList.add(opt === correctAnswer ? 'correct' : 'incorrect');
             optionsContainer.querySelectorAll('button').forEach(b => b.disabled = true);
             if (opt !== correctAnswer) {
                 const correctBtn = Array.from(optionsContainer.querySelectorAll('button')).find(b => b.textContent === correctAnswer);
-                correctBtn.classList.add('correct');
+                if (correctBtn) correctBtn.classList.add('correct');
             }
         };
         optionsContainer.appendChild(btn);
@@ -443,6 +439,10 @@ function displayVocabularyQuestion() {
 }
 
 function displayMatchingExercise() {
+    state.selectedGerman = null;
+    state.selectedAmharic = null;
+    state.matchedPairs = 0; // Reset for new matching game
+
     const germanContainer = document.getElementById('german-words');
     const amharicContainer = document.getElementById('amharic-words');
     germanContainer.innerHTML = '';
@@ -454,7 +454,7 @@ function displayMatchingExercise() {
     germanWords.forEach(word => {
         const btn = document.createElement('button');
         btn.textContent = word;
-        btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-3 px-4 rounded-lg';
+        btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-3 px-4 rounded-lg hover:bg-gray-100 transition-colors duration-200';
         btn.onclick = () => {
             if (state.selectedGerman) state.selectedGerman.classList.remove('selected');
             state.selectedGerman = btn;
@@ -467,7 +467,7 @@ function displayMatchingExercise() {
     amharicWords.forEach(word => {
         const btn = document.createElement('button');
         btn.textContent = word;
-        btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-3 px-4 rounded-lg';
+        btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-3 px-4 rounded-lg hover:bg-gray-100 transition-colors duration-200';
         btn.onclick = () => {
             if (state.selectedAmharic) state.selectedAmharic.classList.remove('selected');
             state.selectedAmharic = btn;
@@ -476,6 +476,7 @@ function displayMatchingExercise() {
         };
         amharicContainer.appendChild(btn);
     });
+    updateProgress(1); // Update progress for each matching game
 }
 
 function checkMatch() {
@@ -491,13 +492,14 @@ function checkMatch() {
         state.selectedAmharic.classList.add('matched');
         state.selectedGerman.disabled = true;
         state.selectedAmharic.disabled = true;
-        handleAnswer(true);
+        handleAnswer(true); // Call handleAnswer for streak/score
     } else {
         state.selectedGerman.classList.add('incorrect');
         state.selectedAmharic.classList.add('incorrect');
-        handleAnswer(false);
+        handleAnswer(false); // Call handleAnswer for streak/score
     }
 
+    // Reset selection and visual feedback after a short delay
     setTimeout(() => {
         if (state.selectedGerman) state.selectedGerman.classList.remove('selected', 'incorrect');
         if (state.selectedAmharic) state.selectedAmharic.classList.remove('selected', 'incorrect');
@@ -505,45 +507,95 @@ function checkMatch() {
         state.selectedAmharic = null;
 
         if (state.matchedPairs === state.shuffledData.length) {
-            feedbackMessage.textContent = 'Super gemacht!';
-            setTimeout(showResults, 1500);
+            feedbackMessage.textContent = 'Super gemacht! Alle Paare gefunden.';
+            setTimeout(showResults, 1500); // End game if all matched
         }
     }, 800);
 }
 
-function displayFillBlankQuestion() {
-    const questionData = state.shuffledData[state.currentQuestionIndex];
-    const sentenceContainer = document.getElementById('fill-blank-sentence');
-    sentenceContainer.innerHTML = questionData.amharic.replace('____', `<span class="font-bold text-blue-600">____</span>`);
+// --- NEW/MODIFIED: fetchAndDisplayGeneratedFillBlankSentenceAI ---
+async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
+    try {
+        feedbackMessage.textContent = 'Generiere neue Sätze...'; // User feedback
+        feedbackMessage.style.color = '#3b82f6'; // Blue for loading
+        
+        // Clear previous options
+        const optionsContainer = document.getElementById('fill-blank-options');
+        optionsContainer.innerHTML = '';
 
-    const correctAnswerAmharic = vocabulary.find(v => v.german === questionData.blank)?.amharic;
-    if (!correctAnswerAmharic) {
-        console.error("Could not find Amharic word for blank from vocabulary:", questionData.blank);
-        feedbackMessage.textContent = "Fehler: Lückenwort nicht gefunden. Frage überspringen.";
+        // Call our backend API to get an AI-generated sentence
+        const response = await fetch('/api/generate-ai-sentence'); 
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        // Backend now sends structured JSON directly
+        const generatedData = await response.json(); 
+
+        if (!generatedData || !generatedData.amharic || !generatedData.german || !generatedData.blank) {
+            throw new Error('Incomplete data received from AI sentence generation.');
+        }
+
+        // Store the single generated sentence in shuffledData for consistency with state
+        state.shuffledData = [{ 
+            german: generatedData.german,
+            amharic: generatedData.amharic, // This will be the Amharic sentence with '____'
+            blank: generatedData.blank      // This is the German word corresponding to the blank
+        }];
+        state.currentQuestionIndex = 0; // Reset as we're always dealing with a single new question
+        updateProgress(1); // Progress for single AI question (1/1)
+
+        const questionData = state.shuffledData[state.currentQuestionIndex];
+        const sentenceContainer = document.getElementById('fill-blank-sentence');
+        // Display the Amharic sentence, replacing the blank marker with a highlighted blank space
+        sentenceContainer.innerHTML = questionData.amharic.replace('____', `<span class="font-bold text-blue-600">____</span>`);
+
+        // Get the correct Amharic word that corresponds to the 'blank' German word
+        // This word is what the user needs to select.
+        const correctAnswerAmharic = vocabulary.find(v => v.german === questionData.blank)?.amharic;
+
+        if (!correctAnswerAmharic) {
+            // This should ideally not happen if vocabulary matches backend's choice
+            console.error("Fehler: Das Lückenwort konnte nicht im lokalen Wortschatz gefunden werden. Überspringe Frage.", questionData.blank);
+            feedbackMessage.textContent = "Fehler: Lückenwort nicht gefunden im Wortschatz. Überspringen.";
+            feedbackMessage.style.color = '#ef4444';
+            setTimeout(nextQuestion, 2000); // Skip to next AI sentence
+            return;
+        }
+
+        // Generate options for the blank. Include the correct answer and 3 random incorrect ones.
+        const options = shuffleArray([
+            correctAnswerAmharic,
+            ...shuffleArray(vocabulary.filter(v => v.amharic !== correctAnswerAmharic).map(v => v.amharic)).slice(0, 3)
+        ]);
+        
+        options.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.textContent = opt;
+            btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-4 px-4 rounded-lg hover:bg-gray-100 transition-colors duration-200';
+            btn.onclick = () => {
+                const isCorrect = (opt === correctAnswerAmharic);
+                handleAnswer(isCorrect, correctAnswerAmharic); // Pass correct answer to handleAnswer
+                btn.classList.add(isCorrect ? 'correct' : 'incorrect');
+                if (!isCorrect) { // Highlight correct answer if user was wrong
+                    const correctBtn = Array.from(optionsContainer.children).find(b => b.textContent === correctAnswerAmharic);
+                    if (correctBtn) correctBtn.classList.add('correct');
+                }
+            };
+            optionsContainer.appendChild(btn);
+        });
+        feedbackMessage.textContent = ''; // Clear loading message
+    } catch (error) {
+        console.error('Error fetching/displaying AI generated sentence:', error);
+        feedbackMessage.textContent = 'Fehler beim Laden der KI-Sätze. Bitte versuchen Sie es erneut.';
         feedbackMessage.style.color = '#ef4444';
-        setTimeout(nextQuestion, 2000);
-        return;
+        setTimeout(showMainMenu, 3000); // Go back to main menu on severe error
     }
-
-    const options = shuffleArray([
-        correctAnswerAmharic,
-        ...shuffleArray(vocabulary.filter(v => v.amharic !== correctAnswerAmharic).map(v => v.amharic)).slice(0, 3)
-    ]);
-    const optionsContainer = document.getElementById('fill-blank-options');
-    optionsContainer.innerHTML = '';
-
-    options.forEach(opt => {
-        const btn = document.createElement('button');
-        btn.textContent = opt;
-        btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-4 px-4 rounded-lg';
-        btn.onclick = () => {
-            handleAnswer(opt === correctAnswerAmharic);
-            btn.classList.add(opt === correctAnswerAmharic ? 'correct' : 'incorrect');
-        };
-        optionsContainer.appendChild(btn);
-    });
-    updateProgress(1);
 }
+
+// --- REMOVED: displayFillBlankQuestion ---
+// This function is no longer needed as fetchAndDisplayGeneratedFillBlankSentenceAI
+// handles both fetching the AI content and displaying the question for the fill-blank exercise.
+
 
 function displayListeningQuestion() {
     const questionData = state.shuffledData[state.currentQuestionIndex];
@@ -553,14 +605,14 @@ function displayListeningQuestion() {
     optionsContainer.innerHTML = '';
 
     document.getElementById('play-audio-btn').onclick = () => speak(questionData.amharic, 'am-ET');
-    speak(questionData.amharic, 'am-ET');
+    speak(questionData.amharic, 'am-ET'); // Automatically play audio when question is displayed
 
     options.forEach(opt => {
         const btn = document.createElement('button');
         btn.textContent = opt;
-        btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-4 px-4 rounded-lg';
+        btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-4 px-4 rounded-lg hover:bg-gray-100 transition-colors duration-200';
         btn.onclick = () => {
-            handleAnswer(opt === correctAnswer);
+            handleAnswer(opt === correctAnswer, correctAnswer); // Pass correct answer
             btn.classList.add(opt === correctAnswer ? 'correct' : 'incorrect');
             optionsContainer.querySelectorAll('button').forEach(b => b.disabled = true);
         };
@@ -573,7 +625,7 @@ function displaySpeakingExercise() {
     speechFeedback.textContent = '';
     const questionData = state.shuffledData[state.currentQuestionIndex];
     document.getElementById('speaking-word').textContent = questionData.amharic;
-    nextSpeakingBtn.classList.add('hidden'); // Hide next button initially
+    // nextSpeakingBtn.classList.add('hidden'); // If you add nextSpeakingBtn back, uncomment this
     updateProgress(state.shuffledData.length);
 }
 
@@ -581,8 +633,17 @@ function displaySpeakingExercise() {
 function showResults() {
     exerciseArea.classList.add('hidden');
     resultScreen.classList.remove('hidden');
-    const total = state.exerciseMode === 'matching' ? state.shuffledData.length : state.score;
-    document.getElementById('score').textContent = `${state.score} / ${total}`;
+    // Calculate total questions based on exercise type for accurate score display
+    let totalQuestionsForScore = state.shuffledData.length;
+    if (state.exerciseMode === 'fill-blank') {
+        // For fill-blank, if each AI question is a new 'round', total can be simply state.score
+        // or a predefined number if you want a fixed number of AI questions per session.
+        // For now, let's just show the score count as total, as there isn't a fixed 'total' for AI questions.
+        totalQuestionsForScore = state.score > 0 ? state.score : 0; // If score is 0, total is 0. Prevents 0/0.
+        // If you want a fixed number of AI questions per exercise session, you'd define that earlier.
+    }
+    
+    document.getElementById('score').textContent = `${state.score} / ${totalQuestionsForScore}`;
     document.getElementById('restart-btn').onclick = () => startExercise(state.exerciseMode);
 }
 
@@ -606,19 +667,19 @@ loginBtn.addEventListener('click', handleLogin);
 if (logoutBtn) logoutBtn.addEventListener('click', handleLogout); // If you add a logout button in HTML
 
 // Speech Recognition Event Listeners
-micBtn.addEventListener('click', () => {
-    micBtn.classList.add('listening');
-    speechFeedback.textContent = 'Listening...';
-    try {
-        recognition.start();
-    } catch (e) {
-        console.error("Speech recognition error:", e);
-        speechFeedback.textContent = 'Error starting mic.';
-        micBtn.classList.remove('listening');
-    }
-});
+if (micBtn && recognition) { // Only add listeners if micBtn and recognition exist
+    micBtn.addEventListener('click', () => {
+        micBtn.classList.add('listening');
+        speechFeedback.textContent = 'Listening...';
+        try {
+            recognition.start();
+        } catch (e) {
+            console.error("Speech recognition error:", e);
+            speechFeedback.textContent = 'Error starting mic.';
+            micBtn.classList.remove('listening');
+        }
+    });
 
-if (recognition) {
     recognition.onresult = (event) => {
         const spokenText = event.results[0][0].transcript;
         const targetWord = state.shuffledData[state.currentQuestionIndex].amharic; // Target Amharic word for speaking practice
@@ -626,16 +687,16 @@ if (recognition) {
         speechFeedback.textContent = `You said: "${spokenText}"`;
         const isCorrect = spokenText.trim().toLowerCase() === targetWord.trim().toLowerCase(); // Case-insensitive compare
 
-        handleAnswer(isCorrect); // This updates score/streak and feedback message
+        handleAnswer(isCorrect, targetWord); // Pass correct answer for feedback
 
         if (isCorrect) {
             speechFeedback.style.color = '#22c55e'; // Green
-            nextSpeakingBtn.classList.remove('hidden'); // Show next button on correct answer
             setTimeout(nextQuestion, 1500); // Auto-advance on correct
         } else {
             speechFeedback.style.color = '#ef4444'; // Red
             feedbackMessage.textContent = `Falsch! Versuchen Sie es erneut. Das richtige Wort ist "${targetWord}"`;
-            nextSpeakingBtn.classList.remove('hidden'); // Show next button to allow manual advance
+            // Removed nextSpeakingBtn interaction, assuming auto-advance or re-attempt.
+            // If you need a manual next for speaking, you'll need to re-add that button and its logic.
         }
     };
     recognition.onend = () => {
@@ -644,13 +705,12 @@ if (recognition) {
     recognition.onerror = (event) => {
         speechFeedback.textContent = `Error: ${event.error}`;
         micBtn.classList.remove('listening');
-        nextSpeakingBtn.classList.remove('hidden'); // Show next button on error
+        // nextSpeakingBtn.classList.remove('hidden'); // If you add nextSpeakingBtn back, uncomment this
     };
 }
-// Add event listener for the "Next Question" button in speaking practice
-if (nextSpeakingBtn) {
-    nextSpeakingBtn.addEventListener('click', nextQuestion);
-}
+// Removed nextSpeakingBtn event listener as the button isn't consistently available or its logic changed.
+// If you want a manual 'Next' for speaking, reconsider its placement and interaction.
+
 
 // --- INITIALIZATION ---
 window.onload = () => {
