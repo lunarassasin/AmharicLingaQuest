@@ -6,29 +6,52 @@
     <title>Amharic LinguaQuest v3 - Multi-Exercise</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css"> 
+    <link rel="stylesheet" href="./style.css"> 
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4 font-inter">
 
     <div class="w-full max-w-2xl mx-auto">
         <div class="bg-white rounded-2xl shadow-lg p-6 md:p-8 main-card flex flex-col relative">
 
-            <div id="main-menu">
+            <div id="auth-area" class="hidden"> 
+                <h1 class="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-6">Willkommen zu LinguaQuest!</h1>
+                <p class="text-center text-gray-500 mb-8">Lerne Amharisch mit Spaß und Effizienz.</p>
+                
+                <div id="auth-feedback" class="text-center text-red-600 mb-4 text-sm font-semibold"></div>
+
+                <div id="login-form" class="space-y-4">
+                    <h2 class="text-2xl font-semibold text-gray-700 mb-4 text-center">Anmelden</h2>
+                    <input type="text" id="login-username" placeholder="Benutzername" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200">
+                    <input type="password" id="login-password" placeholder="Passwort" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200">
+                    <button id="login-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors duration-300">Anmelden</button>
+                    <p class="text-gray-600 text-sm mt-4 text-center">Noch kein Konto? <a href="#" id="show-register-link" class="text-blue-600 hover:underline">Jetzt registrieren</a></p>
+                </div>
+
+                <div id="register-form" class="hidden space-y-4">
+                    <h2 class="text-2xl font-semibold text-gray-700 mb-4 text-center">Registrieren</h2>
+                    <input type="text" id="register-username" placeholder="Benutzername" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-200">
+                    <input type="password" id="register-password" placeholder="Passwort" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-200">
+                    <input type="password" id="register-confirm-password" placeholder="Passwort bestätigen" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-200">
+                    <button id="register-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-colors duration-300">Registrieren</button>
+                    <p class="text-gray-600 text-sm mt-4 text-center">Bereits ein Konto? <a href="#" id="show-login-link" class="text-blue-600 hover:underline">Anmelden</a></p>
+                </div>
+            </div>
+            <div id="main-menu" class="hidden"> 
                 <h1 class="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-2">Amharic LinguaQuest</h1>
                 <p class="text-center text-gray-500 mb-8">Wähle eine Übung aus</p>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <button onclick="startExercise('vocabulary')" class="btn bg-blue-500 text-white p-6 rounded-lg font-semibold text-lg">Vocabulary Quiz</button>
-                    <button onclick="startExercise('matching')" class="btn bg-green-500 text-white p-6 rounded-lg font-semibold text-lg">Word Matching</button>
-                    <button onclick="startExercise('fill-blank')" class="btn bg-indigo-500 text-white p-6 rounded-lg font-semibold text-lg">Fill in the Blank</button>
-                    <button onclick="startExercise('listening')" class="btn bg-yellow-500 text-white p-6 rounded-lg font-semibold text-lg">Listening Practice</button>
-                    <button onclick="startExercise('speaking')" class="btn bg-red-500 text-white p-6 rounded-lg font-semibold text-lg">Speaking Practice</button>
+                    <button data-exercise-mode="vocabulary" class="btn bg-blue-500 text-white p-6 rounded-lg font-semibold text-lg hover:bg-blue-600 transition-colors duration-300">Vocabulary Quiz</button>
+                    <button data-exercise-mode="matching" class="btn bg-green-500 text-white p-6 rounded-lg font-semibold text-lg hover:bg-green-600 transition-colors duration-300">Word Matching</button>
+                    <button data-exercise-mode="fill-blank" class="btn bg-indigo-500 text-white p-6 rounded-lg font-semibold text-lg hover:bg-indigo-600 transition-colors duration-300">Fill in the Blank</button>
+                    <button data-exercise-mode="listening" class="btn bg-yellow-500 text-white p-6 rounded-lg font-semibold text-lg hover:bg-yellow-600 transition-colors duration-300">Listening Practice</button>
+                    <button data-exercise-mode="speaking" class="btn bg-red-500 text-white p-6 rounded-lg font-semibold text-lg hover:bg-red-600 transition-colors duration-300">Speaking Practice</button>
                 </div>
-                 <div id="streak-display" class="text-center mt-8 text-lg font-bold text-orange-500"></div>
+                <div id="streak-display" class="text-center mt-8 text-lg font-bold text-orange-500"></div>
+                <button id="logout-btn" class="mt-6 w-full bg-gray-200 text-gray-700 font-bold py-3 px-4 rounded-lg hover:bg-gray-300 transition-colors duration-300">Abmelden</button>
             </div>
-
             <div id="exercise-area" class="hidden flex-grow flex flex-col">
                 <div class="flex justify-between items-center mb-4">
-                    <button id="back-to-menu" class="text-sm font-semibold text-blue-600 hover:text-blue-800">← Main Menu</button>
+                    <button id="back-to-menu" class="text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors duration-200">← Main Menu</button>
                     <div id="exercise-streak" class="text-lg font-bold text-orange-500"></div>
                 </div>
                 <h2 id="exercise-title" class="text-2xl font-bold text-center mb-4"></h2>
@@ -44,7 +67,7 @@
                 </div>
 
                 <div id="matching-ui" class="hidden">
-                     <p class="text-center text-lg text-gray-600 mb-4">Tippe auf ein deutsches Wort und dann auf die amharische Übersetzung.</p>
+                    <p class="text-center text-lg text-gray-600 mb-4">Tippe auf ein deutsches Wort und dann auf die amharische Übersetzung.</p>
                     <div class="grid grid-cols-2 gap-4">
                         <div id="german-words" class="flex flex-col gap-3"></div>
                         <div id="amharic-words" class="flex flex-col gap-3"></div>
@@ -58,17 +81,17 @@
                 </div>
 
                 <div id="listening-ui" class="hidden text-center">
-                     <p class="text-lg text-gray-600 mb-6">Höre gut zu und wähle die richtige Übersetzung.</p>
-                     <button id="play-audio-btn" class="btn bg-blue-500 text-white p-6 rounded-full mb-8 mx-auto flex items-center justify-center w-24 h-24">
+                    <p class="text-lg text-gray-600 mb-6">Höre gut zu und wähle die richtige Übersetzung.</p>
+                    <button id="play-audio-btn" class="btn bg-blue-500 text-white p-6 rounded-full mb-8 mx-auto flex items-center justify-center w-24 h-24 hover:bg-blue-600 transition-colors duration-300">
                         <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16"><path d="M11.536 14.01A8.473 8.473 0 0 0 14.026 8a8.473 8.473 0 0 0-2.49-6.01l-1.414 1.414A6.472 6.472 0 0 1 12.026 8a6.472 6.472 0 0 1-1.904 4.606l1.414 1.414zM10.121 12.596A6.48 6.48 0 0 0 12.026 8a6.48 6.48 0 0 0-1.905-4.596l-1.414 1.414A4.486 4.486 0 0 1 10.026 8a4.486 4.486 0 0 1-1.313 3.182l1.414 1.414zM8.707 11.182A4.486 4.486 0 0 0 10.026 8a4.486 4.486 0 0 0-1.319-3.182L7.293 6.23A2.488 2.488 0 0 1 8.026 8a2.488 2.488 0 0 1-.732 1.768l1.414 1.414zM6 2.5a.5.5 0 0 1 .5.5v10a.5.5 0 0 1-1 0v-10a.5.5 0 0 1 .5-.5zM4 4.5a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0v-6a.5.5 0 0 1 .5-.5zm-2 2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2a.5.5 0 0 1 .5-.5z"/></svg>
-                     </button>
-                     <div id="listening-options" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                    </button>
+                    <div id="listening-options" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                 </div>
                 
                 <div id="speaking-ui" class="hidden text-center">
                     <p class="text-lg text-gray-600 mb-4">Klicke auf das Mikrofon und sprich das Wort aus:</p>
                     <h3 id="speaking-word" class="text-4xl md:text-5xl font-bold text-red-600 mb-8"></h3>
-                    <button id="mic-btn" class="btn bg-red-500 text-white p-6 rounded-full mb-6 mx-auto flex items-center justify-center w-24 h-24">
+                    <button id="mic-btn" class="btn bg-red-500 text-white p-6 rounded-full mb-6 mx-auto flex items-center justify-center w-24 h-24 hover:bg-red-600 transition-colors duration-300">
                         <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16"><path d="M3.5 6.5A.5.5 0 0 1 4 7v1a4 4 0 0 0 8 0V7a.5.5 0 0 1 1 0v1a5 5 0 0 1-4.5 4.975V15h3a.5.5 0 0 1 0 1h-7a.5.5 0 0 1 0-1h3v-2.025A5 5 0 0 1 3 8V7a.5.5 0 0 1 .5-.5z"/><path d="M10 8a2 2 0 1 1-4 0V3a2 2 0 1 1 4 0v5zM8 0a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V3a3 3 0 0 0-3-3z"/></svg>
                     </button>
                     <p id="speech-feedback" class="text-lg font-semibold h-8"></p>
@@ -81,11 +104,12 @@
                 <h2 class="text-3xl font-bold text-gray-800 mb-4">Übung beendet!</h2>
                 <p class="text-xl text-gray-600 mb-2">Dein Ergebnis:</p>
                 <p id="score" class="text-5xl font-bold text-blue-600 mb-6"></p>
-                <button id="restart-btn" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 transition-colors">Nochmal</button>
+                <button id="restart-btn" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 transition-colors mr-2">Nochmal</button>
+                <button id="results-back-to-menu-btn" class="bg-gray-200 text-gray-700 font-bold py-3 px-8 rounded-lg hover:bg-gray-300 transition-colors">Hauptmenü</button>
             </div>
         </div>
     </div>
 
-    <script src="/script.js"></script> 
+    <script src="./script.js"></script> 
 </body>
 </html>
