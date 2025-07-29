@@ -2,13 +2,14 @@
 require('dotenv').config(); // Load environment variables from .env file
 const express = require('express');
 const path = require('path');
-// const mysql = require('mysql2/promise'); // REMOVED: db connection is now centralized
-const db = require('./config/db'); // IMPORTED: Centralized database connection pool
+
+// IMPORT: Centralized database connection pool (assuming db.js is in the SAME directory)
+const db = require('./db');
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// IMPORT: User routes
-const userRoutes = require('./routes/userRoutes');
+// IMPORT: User routes (assuming userRoutes.js is in the SAME directory)
+const userRoutes = require('./userRoutes'); // Changed path
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -16,26 +17,9 @@ const port = process.env.PORT || 3000;
 // --- MIDDLEWARE ---
 app.use(express.json()); // Middleware to parse JSON bodies for POST/PUT requests
 
-// Serve static files from the 'public' directory
-// IMPORTANT: Ensure your index.html, script.js, style.css are inside a 'public' folder
-app.use(express.static(path.join(__dirname, 'public')));
-
-
-// --- Database Connection Test (Now handled directly in config/db.js upon import) ---
-// The db.js file itself will log connection status and exit if it fails.
-// So, you don't need this block here anymore.
-/*
-pool.getConnection()
-    .then(connection => {
-        console.log('Successfully connected to the MySQL database!');
-        connection.release();
-    })
-    .catch(err => {
-        console.error('Failed to connect to the database:', err.message);
-        console.error('Please ensure your MySQL server is running and .env variables (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME) are correct.');
-    });
-*/
-
+// Serve static files from the current directory (where index.js resides)
+// IMPORTANT: This means index.html, script.js, style.css, etc., should be in this folder.
+app.use(express.static(__dirname)); // Changed static file serving to __dirname
 
 // --- ROUTES ---
 
@@ -83,8 +67,9 @@ app.get('/api/vocabulary', async (req, res) => {
 
 
 // Catch-all to serve index.html for any other routes (SPA routing)
+// If index.html is in the same directory, path.join(__dirname, 'index.html') is correct.
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // --- START SERVER ---
