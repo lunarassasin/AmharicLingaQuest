@@ -3,10 +3,10 @@ const mysql = require('mysql2/promise'); // Using the promise-based API
 require('dotenv').config(); // Load environment variables
 
 const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'amharic_linguaquest',
+    host: process.env.DB_HOST || 'sql7.freesqldatabase.com',
+    user: process.env.DB_USER || 'sql7792354',
+    password: process.env.DB_PASSWORD || 'pVdQIvqw3z',
+    database: process.env.DB_NAME || 'sql7792354',
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
