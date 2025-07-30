@@ -213,3 +213,11 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
         res.status(500).json({ message: 'Failed to update progress.', error: error.message });
     }
 });
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+});
