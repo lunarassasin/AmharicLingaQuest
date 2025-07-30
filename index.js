@@ -56,19 +56,18 @@ function calculateSrsProgress(currentSrsLevel, isCorrect) {
     };
 }
 
-// Helper function to parse Gemini's specific output format
-// The prompt tells Gemini to use "German: " as the label for the source language sentence,
-// but the content within will be in the requested source language.
-function parseGeminiSentenceOutput(text) {
-    const sourceLanguageSentenceMatch = text.match(/German: "(.*?)"/); // This will contain the sentence in the requested source language
+// Helper function to parse Gemini's specific output format dynamically based on sourceLanguage
+function parseGeminiSentenceOutput(text, sourceLanguage) {
+    const sourceLanguageLabel = sourceLanguage.charAt(0).toUpperCase() + sourceLanguage.slice(1); // Capitalize first letter
+    const sourceLanguageSentenceMatch = text.match(new RegExp(`${sourceLanguageLabel}: "(.*?)"`)); // Dynamic regex
     const amharicMatch = text.match(/Amharic: "(.*?)"/);
-    const blankWordMatch = text.match(/BlankWord: "(.*?)"/); // This will be the blank in the source language
+    const blankWordMatch = text.match(/BlankWord: "(.*?)"/);
 
     if (sourceLanguageSentenceMatch && amharicMatch && blankWordMatch) {
         return {
-            sourceLanguageSentence: sourceLanguageSentenceMatch[1], // Renamed for clarity on backend
+            sourceLanguageSentence: sourceLanguageSentenceMatch[1],
             amharic: amharicMatch[1],
-            blank: blankWordMatch[1] // This is the blank word in the source language
+            blank: blankWordMatch[1]
         };
     }
     return null;
@@ -110,12 +109,12 @@ app.get('/api/generate-ai-sentence', async (req, res) => {
         Provide the ${sourceLanguage} translation of the sentence.
         Identify the ${sourceLanguage} word that should be replaced with a blank in the sentence (this will be "${source_word}").
         The output should strictly follow this format:
-        German: "..." (This label is fixed for parsing, but content will be in sourceLanguage)
+        ${sourceLanguage.charAt(0).toUpperCase() + sourceLanguage.slice(1)}: "..."
         Amharic: "..." (with blank placeholder '____' for the word "${amharic_word}")
         BlankWord: "${source_word}"
         
         Example (using 'water' in English):
-        German: "I drink water."
+        English: "I drink water."
         Amharic: "እኔ ____ እጠጣለሁ።"
         BlankWord: "water"
 
@@ -130,7 +129,7 @@ app.get('/api/generate-ai-sentence', async (req, res) => {
         const text = response.text();
 
         // 4. Parse Gemini's response to extract structured data
-        const parsedSentence = parseGeminiSentenceOutput(text);
+        const parsedSentence = parseGeminiSentenceOutput(text, sourceLanguage); // Pass sourceLanguage here
 
         if (!parsedSentence) {
             console.error("Failed to parse Gemini output:", text);
@@ -297,7 +296,7 @@ app.post('/api/user/update_language', async (req, res) => {
 // --- UPDATED: API Endpoint to Fetch Vocabulary (with SRS logic and dynamic language) ---
 app.get('/api/vocabulary', async (req, res) => {
     const userId = req.query.userId;
-    const sourceLanguage = req.query.sourceLanguage || 'german'; // Default to german if not provided
+    const sourceLanguage = req.query.sourceLanguage || 'english'; // Default to ENGLISH if not provided
 
     const sourceWordColumn = `${sourceLanguage}_word`; // e.g., 'english_word'
     // No sourceSentenceColumn needed as sentences are AI generated
