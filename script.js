@@ -2,7 +2,7 @@
 
 // --- DATA (will be fetched from server) ---
 let vocabulary = [];
-let sentences = [];
+let sentences = []; // This will remain an empty array as sentences are AI generated
 
 // --- STATE MANAGEMENT ---
 let state = {
@@ -267,7 +267,7 @@ async function fetchUserProfile() {
 
         // Update DOM elements
         if (xpDisplay) xpDisplay.textContent = `XP: ${profileData.xp}`;
-        if (dailyStreakDisplay) dailyStreakDisplay.textContent = `Tages-Streak: ${profileData.daily_streak} �`;
+        if (dailyStreakDisplay) dailyStreakDisplay.textContent = `Tages-Streak: ${profileData.daily_streak} 🔥`;
         state.highestStreak = profileData.highest_streak;
         if (highestStreakDisplay) highestStreakDisplay.textContent = `Höchster Streak: 🔥 ${state.highestStreak}`;
 
@@ -310,13 +310,14 @@ async function fetchVocabulary() {
         }
         const data = await response.json();
         vocabulary = data.vocabulary;
-        sentences = data.sentences;
+        // The sentences array will be empty from the backend, as sentences are AI generated
+        sentences = []; 
         // Update sourceLanguage from backend response, ensuring consistency
         state.sourceLanguage = data.sourceLanguage || state.sourceLanguage;
         saveLanguagePreference(state.sourceLanguage); // Save to local storage
 
         console.log('Vocabulary loaded:', vocabulary);
-        console.log('Sentences loaded:', sentences);
+        console.log('Sentences loaded:', sentences); // This will show an empty array now
 
         await fetchUserProfile(); // Fetch profile to update XP/Streaks and potentially language preference
         showMainMenu();
@@ -512,11 +513,11 @@ function displayVocabularyQuestion() {
     const vocabularyId = questionData.vocabulary_id;
 
     // Dynamically select the source word based on state.sourceLanguage
-    const sourceWord = questionData.source_word; // 'source_word' is aliased from backend
+    const sourceWord = questionData[`${state.sourceLanguage}_word`]; // Access dynamic property
 
     const questionWord = isAmharicToSource ? questionData.amharic : sourceWord;
     const correctAnswer = isAmharicToSource ? sourceWord : questionData.amharic;
-    const optionSourceProp = isAmharicToSource ? 'source_word' : 'amharic'; // Property name for options
+    const optionSourceProp = isAmharicToSource ? `${state.sourceLanguage}_word` : 'amharic'; // Property name for options
 
     document.getElementById('vocab-prompt').textContent = `Was bedeutet das Wort auf ${isAmharicToSource ? getLanguageName(state.sourceLanguage) : 'Amharisch'}?`;
     document.getElementById('vocab-word').textContent = questionWord;
@@ -543,7 +544,7 @@ function displayVocabularyQuestion() {
 }
 
 function displayMatchingExercise() {
-    state.selectedSourceWord = null; // Renamed from selectedGerman
+    state.selectedSourceWord = null; // Holds the selected source language word
     state.selectedAmharic = null;
     state.matchedPairs = 0;
 
@@ -553,7 +554,8 @@ function displayMatchingExercise() {
     amharicContainer.innerHTML = '';
 
     // Dynamically get source words
-    const sourceWords = shuffleArray(state.shuffledData.map(v => v.source_word));
+    const sourceWordProp = `${state.sourceLanguage}_word`;
+    const sourceWords = shuffleArray(state.shuffledData.map(v => v[sourceWordProp]));
     const amharicWords = shuffleArray(state.shuffledData.map(v => v.amharic));
 
     sourceWords.forEach(word => {
@@ -591,7 +593,8 @@ function checkMatch() {
     const amharicText = state.selectedAmharic.textContent;
 
     // Find the correct pair in the vocabulary based on the selected source language
-    const correctPair = vocabulary.find(v => v.source_word === sourceText && v.amharic === amharicText);
+    const sourceWordProp = `${state.sourceLanguage}_word`;
+    const correctPair = vocabulary.find(v => v[sourceWordProp] === sourceText && v.amharic === amharicText);
 
     if (correctPair) {
         state.matchedPairs++;
@@ -634,6 +637,7 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
         }
         const generatedData = await response.json(); // This will have properties like { english: "...", amharic: "...", blank: "...", vocabulary_id: ... }
 
+        // Check for the dynamically named property for the source sentence
         if (!generatedData || !generatedData.amharic || !generatedData[state.sourceLanguage] || !generatedData.blank || generatedData.vocabulary_id === undefined) {
             console.error("Incomplete AI data:", generatedData);
             throw new Error('Incomplete data received from AI sentence generation.');
@@ -655,7 +659,8 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
 
         // Get the correct source language word that corresponds to the blank
         // This word is what the user needs to select.
-        const correctAnswerSource = vocabulary.find(v => v.vocabulary_id === questionData.vocabulary_id)?.source_word;
+        const sourceWordProp = `${state.sourceLanguage}_word`;
+        const correctAnswerSource = vocabulary.find(v => v.vocabulary_id === questionData.vocabulary_id)?.[sourceWordProp];
 
         if (!correctAnswerSource) {
             console.error("Fehler: Das Lückenwort konnte nicht im lokalen Wortschatz gefunden werden (ID mismatch). Überspringe Frage.", questionData.blank, questionData.vocabulary_id);
@@ -668,7 +673,7 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
         // Generate options for the blank. Include the correct answer and 3 random incorrect ones.
         const options = shuffleArray([
             correctAnswerSource,
-            ...shuffleArray(vocabulary.filter(v => v.source_word !== correctAnswerSource).map(v => v.source_word)).slice(0, 3)
+            ...shuffleArray(vocabulary.filter(v => v[sourceWordProp] !== correctAnswerSource).map(v => v[sourceWordProp])).slice(0, 3)
         ]);
         
         options.forEach(opt => {
@@ -698,8 +703,8 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
 function displayListeningQuestion() {
     const questionData = state.shuffledData[state.currentQuestionIndex];
     const vocabularyId = questionData.vocabulary_id;
-    const correctAnswer = questionData.source_word; // Correct answer is now in the source language
-    const options = shuffleArray([correctAnswer, ...shuffleArray(vocabulary.filter(v => v.source_word !== correctAnswer).map(v => v.source_word)).slice(0, 3)]);
+    const correctAnswer = questionData[`${state.sourceLanguage}_word`]; // Correct answer is now in the source language
+    const options = shuffleArray([correctAnswer, ...shuffleArray(vocabulary.filter(v => v[`${state.sourceLanguage}_word`] !== correctAnswer).map(v => v[`${state.sourceLanguage}_word`])).slice(0, 3)]);
     const optionsContainer = document.getElementById('listening-options');
     optionsContainer.innerHTML = '';
 
