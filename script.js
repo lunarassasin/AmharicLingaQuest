@@ -18,7 +18,6 @@ let state = {
     userToken: localStorage.getItem('jwtToken') || null, // Store JWT token
     userId: localStorage.getItem('userId') || null,      // Store User ID
     username: localStorage.getItem('username') || null,  // Store Username
-    // We won't store XP and dailyStreak directly in state as they're dynamic and fetched from backend
 };
 
 // --- SPEECH RECOGNITION SETUP ---
@@ -59,7 +58,7 @@ const progressBar = document.getElementById('progress-bar');
 const feedbackMessage = document.getElementById('feedback-message');
 const exerciseStreak = document.getElementById('exercise-streak');
 
-// NEW UI Elements for XP and Daily Streak from index.html
+// UI Elements for XP and Daily Streak from index.html
 const xpDisplay = document.getElementById('xp-display');
 const dailyStreakDisplay = document.getElementById('daily-streak-display');
 const streakDisplay = document.getElementById('streak-display'); // Highest streak display
@@ -78,26 +77,15 @@ const speechFeedback = document.getElementById('speech-feedback');
 
 // --- LOCAL STORAGE (Simplified as main progress is on server) ---
 function saveProgress() {
-    // We primarily save auth tokens. Highest streak is now server-managed.
-    // This function will mostly be for saving auth details on login.
-    // localStorage.setItem('amharicLinguaQuestProgress', JSON.stringify({
-    //     highestStreak: state.highestStreak, // Kept for backward compatibility if desired
-    //     userId: state.userId,
-    //     username: state.username,
-    // }));
+    // This function is now mostly for saving auth details. XP/streak are server-managed.
 }
 
 function loadProgress() {
-    // This will mainly load user ID and username if they exist, to try auto-login.
-    // Highest streak will be fetched from the server via fetchUserProfile.
     state.userId = localStorage.getItem('userId') || null;
     state.username = localStorage.getItem('username') || null;
     state.userToken = localStorage.getItem('jwtToken') || null;
 
-    // Initial display based on potentially outdated local storage, will be updated by fetchUserProfile
-    if (state.highestStreak !== undefined && streakDisplay) {
-        streakDisplay.textContent = `Höchster Streak: 🔥 ${state.highestStreak}`;
-    }
+    // Initial display will be updated by fetchUserProfile
 }
 
 // --- UTILITY ---
@@ -120,19 +108,19 @@ function showAuthArea() {
     mainMenu.classList.add('hidden');
     exerciseArea.classList.add('hidden');
     resultScreen.classList.add('hidden');
-    showLoginForm(); // Default to login form
+    showLoginForm();
 }
 
 function showLoginForm() {
     loginForm.classList.remove('hidden');
     registerForm.classList.add('hidden');
-    authFeedback.textContent = ''; // Clear feedback
+    authFeedback.textContent = '';
 }
 
 function showRegisterForm() {
     registerForm.classList.remove('hidden');
     loginForm.classList.add('hidden');
-    authFeedback.textContent = ''; // Clear feedback
+    authFeedback.textContent = '';
 }
 
 async function handleRegister() {
@@ -163,14 +151,14 @@ async function handleRegister() {
         const data = await response.json();
         if (response.ok) {
             authFeedback.textContent = 'Registrierung erfolgreich! Bitte melden Sie sich an.';
-            authFeedback.style.color = '#22c55e'; // Green for success
-            setTimeout(showLoginForm, 1500); // Show login after success
-            registerUsernameInput.value = ''; // Clear form
+            authFeedback.style.color = '#22c55e';
+            setTimeout(showLoginForm, 1500);
+            registerUsernameInput.value = '';
             registerPasswordInput.value = '';
             registerConfirmPasswordInput.value = '';
         } else {
             authFeedback.textContent = data.msg || 'Registrierung fehlgeschlagen.';
-            authFeedback.style.color = '#ef4444'; // Red for error
+            authFeedback.style.color = '#ef4444';
         }
     } catch (error) {
         console.error('Registration error:', error);
@@ -216,10 +204,9 @@ function handleAuthSuccess(token, userId, username) {
     state.userToken = token;
     state.userId = userId;
     state.username = username;
-    authFeedback.textContent = ''; // Clear any previous auth feedback
+    authFeedback.textContent = '';
     console.log('User logged in:', username, 'ID:', userId);
-    // Proceed to load vocabulary and show main menu
-    fetchVocabulary(); // This will now internally call fetchUserProfile
+    fetchVocabulary(); // This will now fetch vocabulary and then call fetchUserProfile
 }
 
 function handleLogout() {
@@ -230,10 +217,10 @@ function handleLogout() {
     state.userId = null;
     state.username = null;
     alert('Sie wurden abgemeldet.');
-    showAuthArea(); // Go back to login/register screen
+    showAuthArea();
 }
 
-// --- NEW: Function to fetch and display user profile (XP, Daily Streak, etc.) ---
+// --- Function to fetch and display user profile (XP, Daily Streak, etc.) ---
 async function fetchUserProfile() {
     if (!state.userId || !state.userToken) {
         console.warn("Cannot fetch user profile: user not logged in.");
@@ -259,31 +246,27 @@ async function fetchUserProfile() {
         // Update DOM elements
         if (xpDisplay) xpDisplay.textContent = `XP: ${profileData.xp}`;
         if (dailyStreakDisplay) dailyStreakDisplay.textContent = `Tages-Streak: ${profileData.daily_streak} 🔥`;
-        // Update local highest streak state based on server
         state.highestStreak = profileData.highest_streak;
         if (streakDisplay) streakDisplay.textContent = `Höchster Streak: 🔥 ${state.highestStreak}`;
 
     } catch (error) {
         console.error('Error fetching user profile:', error);
-        // Display generic error, but don't prevent app usage
     }
 }
 
-// --- MODIFIED: FETCH VOCABULARY FROM SERVER ---
-// This function is now called AFTER successful login AND sends userId for SRS filtering
+// --- FETCH VOCABULARY FROM SERVER ---
 async function fetchVocabulary() {
     try {
         const headers = { 'Content-Type': 'application/json' };
         if (state.userToken) {
             headers['Authorization'] = `Bearer ${state.userToken}`;
         }
-        if (!state.userId) { // Ensure userId is available for SRS-driven vocabulary fetch
+        if (!state.userId) {
             console.error("User ID not available for vocabulary fetch. Showing login.");
             showAuthArea();
             return;
         }
 
-        // Pass userId as a query parameter for personalized SRS vocabulary
         const response = await fetch(`/api/vocabulary?userId=${state.userId}`, { headers });
         if (!response.ok) {
             if (response.status === 401 || response.status === 403) {
@@ -294,13 +277,12 @@ async function fetchVocabulary() {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
-        vocabulary = data.vocabulary; // This now includes vocabulary_id, srs_level, next_review_date
+        vocabulary = data.vocabulary;
         sentences = data.sentences;
         console.log('Vocabulary loaded:', vocabulary);
         console.log('Sentences loaded:', sentences);
 
-        // Fetch and display user profile after vocabulary is loaded and user is authenticated
-        await fetchUserProfile(); // <--- Fetch profile here to populate XP and streaks
+        await fetchUserProfile();
         showMainMenu();
     } catch (error) {
         console.error('Failed to fetch vocabulary:', error);
@@ -315,13 +297,11 @@ function showMainMenu() {
     mainMenu.classList.remove('hidden');
     exerciseArea.classList.add('hidden');
     resultScreen.classList.add('hidden');
-    // loadProgress(); // Removed, as fetchUserProfile handles main progress display
 }
 
 async function startExercise(mode) {
     if (vocabulary.length === 0) {
         alert("Wortschatz ist noch nicht geladen. Bitte warten oder aktualisieren Sie die Seite.");
-        // Attempt to re-fetch vocabulary if it's empty
         fetchVocabulary();
         return;
     }
@@ -329,7 +309,7 @@ async function startExercise(mode) {
     state.exerciseMode = mode;
     state.currentQuestionIndex = 0;
     state.score = 0;
-    state.currentStreak = 0; // Reset current streak for each exercise session
+    state.currentStreak = 0;
 
     mainMenu.classList.add('hidden');
     exerciseArea.classList.remove('hidden');
@@ -346,12 +326,12 @@ async function startExercise(mode) {
     switch (mode) {
         case 'vocabulary':
             exerciseTitle.textContent = 'Wortschatz-Quiz';
-            state.shuffledData = shuffleArray([...vocabulary]); // Use the SRS-filtered vocabulary
+            state.shuffledData = shuffleArray([...vocabulary]);
             displayVocabularyQuestion();
             break;
         case 'matching':
             exerciseTitle.textContent = 'Wort-Matching';
-            state.shuffledData = shuffleArray([...vocabulary]).slice(0, 5); // Matching uses a subset
+            state.shuffledData = shuffleArray([...vocabulary]).slice(0, 5);
             state.matchedPairs = 0;
             displayMatchingExercise();
             break;
@@ -378,7 +358,6 @@ async function startExercise(mode) {
 }
 
 function nextQuestion() {
-    // For fill-blank, we always fetch a new AI sentence.
     if (state.exerciseMode === 'fill-blank') {
         fetchAndDisplayGeneratedFillBlankSentenceAI();
         return;
@@ -389,7 +368,7 @@ function nextQuestion() {
 
     const totalQuestions = state.shuffledData.length;
     if (state.currentQuestionIndex >= totalQuestions) {
-        showResults();
+        showResults(); // Call showResults when exercise is finished
         return;
     }
 
@@ -404,29 +383,24 @@ function updateProgress(total) {
     progressBar.style.width = `${((state.currentQuestionIndex + 1) / total) * 100}%`;
 }
 
-// --- MODIFIED: handleAnswer to send data to backend ---
+// --- MODIFIED: handleAnswer (now only for SRS and current streak) ---
 function handleAnswer(isCorrect, correctAnswerProvided = null, vocabularyId = null) {
     if (isCorrect) {
         state.score++;
         state.currentStreak++;
-        // Highest streak is now primarily managed by the backend, but we update local display for immediate feedback
-        // if (state.currentStreak > state.highestStreak) {
-        //     state.highestStreak = state.currentStreak;
-        // }
         feedbackMessage.textContent = 'Richtig!';
-        feedbackMessage.style.color = '#22c55e'; // Green
+        feedbackMessage.style.color = '#22c55e';
     } else {
-        state.currentStreak = 0; // Reset streak on incorrect answer
+        state.currentStreak = 0;
         if (correctAnswerProvided) {
             feedbackMessage.textContent = `Falsch! Die richtige Antwort war "${correctAnswerProvided}"`;
         } else {
             feedbackMessage.textContent = 'Falsch!';
         }
-        feedbackMessage.style.color = '#ef4444'; // Red
+        feedbackMessage.style.color = '#ef4444';
     }
     exerciseStreak.textContent = `🔥 ${state.currentStreak}`;
 
-    // Disable options/buttons after an answer is given for relevant exercises
     if (state.exerciseMode === 'vocabulary' || state.exerciseMode === 'listening' || state.exerciseMode === 'fill-blank' || state.exerciseMode === 'speaking') {
         const optionsContainer = document.getElementById(
             state.exerciseMode === 'vocabulary' ? 'vocab-options' :
@@ -434,26 +408,21 @@ function handleAnswer(isCorrect, correctAnswerProvided = null, vocabularyId = nu
         );
         if (optionsContainer) {
             optionsContainer.querySelectorAll('button').forEach(b => b.disabled = true);
-            // Also ensure input for fill-blank is disabled if it uses an input field (not relevant for button options)
         }
-        // For speaking, micBtn might need to be disabled/enabled separately
     }
 
-    // --- SRS, XP, and Daily Streak Update Call ---
-    // Only update progress if it's a vocabulary-based question and user is logged in
-    // Matching exercise doesn't update SRS per pair in this simplified setup.
+    // --- SRS Update Call (ONLY SRS here) ---
     if (vocabularyId && state.userId) {
-        updateUserProgressOnServer(vocabularyId, isCorrect);
+        updateUserSRSOnServer(vocabularyId, isCorrect); // Renamed for clarity
     }
 
-    // Auto-advance for most quizzes after a short delay
     if (state.exerciseMode !== 'matching' && state.exerciseMode !== 'speaking') {
         setTimeout(nextQuestion, 1500);
     }
 }
 
-// NEW: Function to update user progress on server for SRS, XP, and Daily Streak
-async function updateUserProgressOnServer(vocabularyId, isCorrect) {
+// NEW: Function to update user SRS progress on server (renamed from updateUserProgressOnServer)
+async function updateUserSRSOnServer(vocabularyId, isCorrect) {
     try {
         const response = await fetch('/api/vocabulary/update_srs', {
             method: 'POST',
@@ -478,18 +447,10 @@ async function updateUserProgressOnServer(vocabularyId, isCorrect) {
         }
 
         const data = await response.json();
-        console.log('Progress update response:', data);
-
-        // Frontend feedback: Awarded XP, new daily streak, new highest streak (from server)
-        feedbackMessage.textContent += ` (+${data.xpAwarded} XP)`;
-        if (dailyStreakDisplay) dailyStreakDisplay.textContent = `Tages-Streak: ${data.newDailyStreak} 🔥`;
-        if (streakDisplay) streakDisplay.textContent = `Höchster Streak: 🔥 ${data.newHighestStreak}`;
-
-        // Re-fetch full user profile to get accurate, current XP display after a small delay
-        setTimeout(fetchUserProfile, 500);
+        console.log('SRS update response:', data); // Should only confirm SRS update now
 
     } catch (error) {
-        console.error('Error updating progress on server:', error);
+        console.error('Error updating SRS on server:', error);
         feedbackMessage.textContent = 'Fehler beim Speichern des Fortschritts.';
         feedbackMessage.style.color = '#ef4444';
     }
@@ -498,11 +459,10 @@ async function updateUserProgressOnServer(vocabularyId, isCorrect) {
 
 // --- EXERCISE-SPECIFIC DISPLAY FUNCTIONS ---
 
-// MODIFIED: displayVocabularyQuestion to pass vocabulary_id
 function displayVocabularyQuestion() {
     const isAmharicToGerman = Math.random() > 0.5;
     const questionData = state.shuffledData[state.currentQuestionIndex];
-    const vocabularyId = questionData.vocabulary_id; // Get vocabulary_id here
+    const vocabularyId = questionData.vocabulary_id;
     const questionWord = isAmharicToGerman ? questionData.amharic : questionData.german;
     const correctAnswer = isAmharicToGerman ? questionData.german : questionData.amharic;
     const optionSource = isAmharicToGerman ? 'german' : 'amharic';
@@ -518,7 +478,7 @@ function displayVocabularyQuestion() {
         btn.textContent = opt;
         btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-4 px-4 rounded-lg hover:bg-gray-100 transition-colors duration-200';
         btn.onclick = () => {
-            handleAnswer(opt === correctAnswer, correctAnswer, vocabularyId); // Pass correct answer AND vocabularyId
+            handleAnswer(opt === correctAnswer, correctAnswer, vocabularyId);
             btn.classList.add(opt === correctAnswer ? 'correct' : 'incorrect');
             optionsContainer.querySelectorAll('button').forEach(b => b.disabled = true);
             if (opt !== correctAnswer) {
@@ -534,7 +494,7 @@ function displayVocabularyQuestion() {
 function displayMatchingExercise() {
     state.selectedGerman = null;
     state.selectedAmharic = null;
-    state.matchedPairs = 0; // Reset for new matching game
+    state.matchedPairs = 0;
 
     const germanContainer = document.getElementById('german-words');
     const amharicContainer = document.getElementById('amharic-words');
@@ -569,7 +529,7 @@ function displayMatchingExercise() {
         };
         amharicContainer.appendChild(btn);
     });
-    updateProgress(1); // Update progress for each matching game
+    updateProgress(1);
 }
 
 function checkMatch() {
@@ -579,22 +539,20 @@ function checkMatch() {
     const amharicText = state.selectedAmharic.textContent;
     const correctPair = vocabulary.find(v => v.german === germanText && v.amharic === amharicText);
 
-    // For matching, we don't update SRS for individual pairs as it's a "game"
-    // You could modify this if you want to track each matched pair.
     if (correctPair) {
         state.matchedPairs++;
         state.selectedGerman.classList.add('matched');
         state.selectedAmharic.classList.add('matched');
         state.selectedGerman.disabled = true;
         state.selectedAmharic.disabled = true;
-        handleAnswer(true); // Call handleAnswer for streak/score (without vocabularyId)
+        // For matching, we don't update SRS per pair, only score/streak
+        handleAnswer(true);
     } else {
         state.selectedGerman.classList.add('incorrect');
         state.selectedAmharic.classList.add('incorrect');
-        handleAnswer(false); // Call handleAnswer for streak/score (without vocabularyId)
+        handleAnswer(false);
     }
 
-    // Reset selection and visual feedback after a short delay
     setTimeout(() => {
         if (state.selectedGerman) state.selectedGerman.classList.remove('selected', 'incorrect');
         if (state.selectedAmharic) state.selectedAmharic.classList.remove('selected', 'incorrect');
@@ -603,109 +561,98 @@ function checkMatch() {
 
         if (state.matchedPairs === state.shuffledData.length) {
             feedbackMessage.textContent = 'Super gemacht! Alle Paare gefunden.';
-            setTimeout(showResults, 1500); // End game if all matched
+            setTimeout(showResults, 1500);
         }
     }, 800);
 }
 
-// MODIFIED: fetchAndDisplayGeneratedFillBlankSentenceAI to pass vocabulary_id
 async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
     try {
-        feedbackMessage.textContent = 'Generiere neue Sätze...'; // User feedback
-        feedbackMessage.style.color = '#3b82f6'; // Blue for loading
-
-        // Clear previous options
+        feedbackMessage.textContent = 'Generiere neue Sätze...';
+        feedbackMessage.style.color = '#3b82f6';
+        
         const optionsContainer = document.getElementById('fill-blank-options');
         optionsContainer.innerHTML = '';
 
-        // Call our backend API to get an AI-generated sentence
         const response = await fetch('/api/generate-ai-sentence');
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        // Backend now sends structured JSON directly, including vocabulary_id
         const generatedData = await response.json();
 
         if (!generatedData || !generatedData.amharic || !generatedData.german || !generatedData.blank || generatedData.vocabulary_id === undefined) {
             throw new Error('Incomplete data received from AI sentence generation (missing vocabulary_id).');
         }
 
-        // Store the single generated sentence in shuffledData for consistency with state
         state.shuffledData = [{
             german: generatedData.german,
-            amharic: generatedData.amharic, // This will be the Amharic sentence with '____'
-            blank: generatedData.blank,      // This is the German word corresponding to the blank
-            vocabulary_id: generatedData.vocabulary_id // Store the vocabulary ID from backend
+            amharic: generatedData.amharic,
+            blank: generatedData.blank,
+            vocabulary_id: generatedData.vocabulary_id
         }];
-        state.currentQuestionIndex = 0; // Reset as we're always dealing with a single new question
-        updateProgress(1); // Progress for single AI question (1/1)
+        state.currentQuestionIndex = 0;
+        updateProgress(1);
 
         const questionData = state.shuffledData[state.currentQuestionIndex];
         const sentenceContainer = document.getElementById('fill-blank-sentence');
-        // Display the Amharic sentence, replacing the blank marker with a highlighted blank space
         sentenceContainer.innerHTML = questionData.amharic.replace('____', `<span class="font-bold text-blue-600">____</span>`);
 
-        // Get the correct Amharic word that corresponds to the 'blank' German word
-        // This word is what the user needs to select.
-        const correctAnswerAmharic = vocabulary.find(v => v.id === questionData.vocabulary_id)?.amharic; // Use vocabulary_id to find
+        const correctAnswerAmharic = vocabulary.find(v => v.id === questionData.vocabulary_id)?.amharic;
 
         if (!correctAnswerAmharic) {
             console.error("Fehler: Das Lückenwort konnte nicht im lokalen Wortschatz gefunden werden (ID mismatch). Überspringe Frage.", questionData.blank, questionData.vocabulary_id);
             feedbackMessage.textContent = "Fehler: Lückenwort nicht gefunden im Wortschatz. Überspringen.";
             feedbackMessage.style.color = '#ef4444';
-            setTimeout(nextQuestion, 2000); // Skip to next AI sentence
+            setTimeout(nextQuestion, 2000);
             return;
         }
 
-        // Generate options for the blank. Include the correct answer and 3 random incorrect ones.
         const options = shuffleArray([
             correctAnswerAmharic,
             ...shuffleArray(vocabulary.filter(v => v.amharic !== correctAnswerAmharic).map(v => v.amharic)).slice(0, 3)
         ]);
-
+        
         options.forEach(opt => {
             const btn = document.createElement('button');
             btn.textContent = opt;
             btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-4 px-4 rounded-lg hover:bg-gray-100 transition-colors duration-200';
             btn.onclick = () => {
                 const isCorrect = (opt === correctAnswerAmharic);
-                handleAnswer(isCorrect, correctAnswerAmharic, questionData.vocabulary_id); // Pass correct answer AND vocabularyId
+                handleAnswer(isCorrect, correctAnswerAmharic, questionData.vocabulary_id);
                 btn.classList.add(isCorrect ? 'correct' : 'incorrect');
-                if (!isCorrect) { // Highlight correct answer if user was wrong
+                if (!isCorrect) {
                     const correctBtn = Array.from(optionsContainer.children).find(b => b.textContent === correctAnswerAmharic);
                     if (correctBtn) correctBtn.classList.add('correct');
                 }
             };
             optionsContainer.appendChild(btn);
         });
-        feedbackMessage.textContent = ''; // Clear loading message
+        feedbackMessage.textContent = '';
     } catch (error) {
         console.error('Error fetching/displaying AI generated sentence:', error);
         feedbackMessage.textContent = 'Fehler beim Laden der KI-Sätze. Bitte versuchen Sie es erneut.';
         feedbackMessage.style.color = '#ef4444';
-        setTimeout(showMainMenu, 3000); // Go back to main menu on severe error
+        setTimeout(showMainMenu, 3000);
     }
 }
 
-
-// MODIFIED: displayListeningQuestion to pass vocabulary_id
 function displayListeningQuestion() {
     const questionData = state.shuffledData[state.currentQuestionIndex];
-    const vocabularyId = questionData.vocabulary_id; // Get vocabulary_id here
+    const vocabularyId = questionData.vocabulary_id;
     const correctAnswer = questionData.german;
     const options = shuffleArray([correctAnswer, ...shuffleArray(vocabulary.filter(v => v.german !== correctAnswer).map(v => v.german)).slice(0, 3)]);
     const optionsContainer = document.getElementById('listening-options');
     optionsContainer.innerHTML = '';
 
     document.getElementById('play-audio-btn').onclick = () => speak(questionData.amharic, 'am-ET');
-    speak(questionData.amharic, 'am-ET'); // Automatically play audio when question is displayed
+    speak(questionData.amharic, 'am-ET');
 
     options.forEach(opt => {
         const btn = document.createElement('button');
         btn.textContent = opt;
         btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-4 px-4 rounded-lg hover:bg-gray-100 transition-colors duration-200';
         btn.onclick = () => {
-            handleAnswer(opt === correctAnswer, correctAnswer, vocabularyId); // Pass correct answer AND vocabularyId
+            handleAnswer(opt === correctAnswer, correctAnswer, vocabularyId);
             btn.classList.add(opt === correctAnswer ? 'correct' : 'incorrect');
             optionsContainer.querySelectorAll('button').forEach(b => b.disabled = true);
         };
@@ -714,16 +661,14 @@ function displayListeningQuestion() {
     updateProgress(state.shuffledData.length);
 }
 
-// MODIFIED: displaySpeakingExercise to pass vocabulary_id
 function displaySpeakingExercise() {
     speechFeedback.textContent = '';
     const questionData = state.shuffledData[state.currentQuestionIndex];
-    const vocabularyId = questionData.vocabulary_id; // Get vocabulary_id here
+    const vocabularyId = questionData.vocabulary_id;
     document.getElementById('speaking-word').textContent = questionData.amharic;
     updateProgress(state.shuffledData.length);
 
     if (recognition) {
-        // Re-assign onresult to ensure it uses the correct vocabularyId for the current question
         recognition.onresult = (event) => {
             const spokenText = event.results[0][0].transcript;
             const targetWord = state.shuffledData[state.currentQuestionIndex].amharic;
@@ -731,7 +676,7 @@ function displaySpeakingExercise() {
             speechFeedback.textContent = `You said: "${spokenText}"`;
             const isCorrect = spokenText.trim().toLowerCase() === targetWord.trim().toLowerCase();
 
-            handleAnswer(isCorrect, targetWord, vocabularyId); // Pass correct answer AND vocabularyId
+            handleAnswer(isCorrect, targetWord, vocabularyId);
 
             if (isCorrect) {
                 speechFeedback.style.color = '#22c55e';
@@ -744,21 +689,60 @@ function displaySpeakingExercise() {
     }
 }
 
-// --- RESULTS ---
-function showResults() {
+// --- MODIFIED: showResults to call new /api/exercise/complete endpoint ---
+async function showResults() {
     exerciseArea.classList.add('hidden');
     resultScreen.classList.remove('hidden');
+    
     // Calculate total questions based on exercise type for accurate score display
     let totalQuestionsForScore = state.shuffledData.length;
     if (state.exerciseMode === 'fill-blank') {
-        // For fill-blank, if each AI question is a new 'round', total can be simply state.score
-        // or a predefined number if you want a fixed number of AI questions per session.
-        // For now, let's just show the score count as total, as there isn't a fixed 'total' for AI questions.
-        totalQuestionsForScore = state.score > 0 ? state.score : 0; // If score is 0, total is 0. Prevents 0/0.
+        totalQuestionsForScore = state.score > 0 ? state.score : 0;
     }
-
+    
     document.getElementById('score').textContent = `${state.score} / ${totalQuestionsForScore}`;
     document.getElementById('restart-btn').onclick = () => startExercise(state.exerciseMode);
+
+    // --- NEW: Call backend to mark exercise complete and update XP/Streak ---
+    if (state.userId) {
+        try {
+            const response = await fetch('/api/exercise/complete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${state.userToken}`
+                },
+                body: JSON.stringify({
+                    userId: state.userId,
+                    exerciseMode: state.exerciseMode,
+                    score: state.score,
+                    totalQuestions: totalQuestionsForScore // Pass total questions for backend logging/future use
+                })
+            });
+
+            if (!response.ok) {
+                if (response.status === 401 || response.status === 403) {
+                    alert('Sitzung abgelaufen oder nicht autorisiert. Bitte melden Sie sich erneut an.');
+                    handleLogout();
+                    return;
+                }
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('Exercise completion response:', data);
+
+            // Update main menu displays with final values from backend
+            if (xpDisplay) xpDisplay.textContent = `XP: ${data.totalXp}`;
+            if (dailyStreakDisplay) dailyStreakDisplay.textContent = `Tages-Streak: ${data.newDailyStreak} 🔥`;
+            if (streakDisplay) streakDisplay.textContent = `Höchster Streak: 🔥 ${data.newHighestStreak}`;
+
+        } catch (error) {
+            console.error('Error marking exercise complete on server:', error);
+            // Display an error to the user, but don't prevent them from seeing results
+            alert('Fehler beim Speichern des Übungsabschlusses. XP und Streak wurden möglicherweise nicht aktualisiert.');
+        }
+    }
 }
 
 // --- EVENT LISTENERS ---
@@ -781,7 +765,7 @@ loginBtn.addEventListener('click', handleLogin);
 if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
 
 // Speech Recognition Event Listeners
-if (micBtn && recognition) { // Only add listeners if micBtn and recognition exist
+if (micBtn && recognition) {
     micBtn.addEventListener('click', () => {
         micBtn.classList.add('listening');
         speechFeedback.textContent = 'Listening...';
@@ -794,7 +778,6 @@ if (micBtn && recognition) { // Only add listeners if micBtn and recognition exi
         }
     });
 
-    // onresult logic is now handled within displaySpeakingExercise to capture current vocabularyId
     recognition.onend = () => {
         micBtn.classList.remove('listening');
     };
@@ -807,10 +790,10 @@ if (micBtn && recognition) { // Only add listeners if micBtn and recognition exi
 
 // --- INITIALIZATION ---
 window.onload = () => {
-    loadProgress(); // Load any saved streak/user info (userId, username, token)
+    loadProgress();
     if (state.userToken && state.userId && state.username) {
         console.log("Found existing session. Attempting auto-login and fetching data.");
-        fetchVocabulary(); // This will now fetch vocabulary and then call fetchUserProfile
+        fetchVocabulary();
     } else {
         console.log("No active session. Showing login/registration.");
         showAuthArea();
