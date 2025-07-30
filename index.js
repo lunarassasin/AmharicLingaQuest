@@ -152,6 +152,67 @@ app.get('/api/generate-ai-sentence', async (req, res) => {
     }
 });
 
+// --- NEW API Endpoint for Text-to-Speech (TTS) ---
+app.post('/api/synthesize-amharic-speech', async (req, res) => {
+    const { text, lang } = req.body; // Expect text and language (e.g., 'am-ET')
+
+    if (!text || !lang) {
+        return res.status(400).json({ message: 'Missing text or language for speech synthesis.' });
+    }
+
+    try {
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-tts" });
+
+        const payload = {
+            contents: [{
+                parts: [{ text: text }]
+            }],
+            generationConfig: {
+                responseModalities: ["AUDIO"],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: "Kore" } // Using 'Kore' voice for Amharic
+                    }
+                }
+            },
+            model: "gemini-2.5-flash-preview-tts"
+        };
+
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Gemini TTS API error:', response.status, errorText);
+            throw new Error(`Gemini TTS API responded with status ${response.status}: ${errorText}`);
+        }
+
+        const result = await response.json();
+        const part = result?.candidates?.[0]?.content?.parts?.[0];
+        const audioData = part?.inlineData?.data;
+        const mimeType = part?.inlineData?.mimeType;
+
+        if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
+            // Extract sample rate from mimeType, e.g., "audio/L16;rate=16000"
+            const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+            const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 16000; // Default to 16000 if not found
+
+            res.json({ audioData, mimeType, sampleRate });
+        } else {
+            console.error("Invalid audio data structure from Gemini TTS:", result);
+            res.status(500).json({ message: 'Failed to retrieve valid audio data from TTS API.' });
+        }
+
+    } catch (error) {
+        console.error('Error in /api/synthesize-amharic-speech:', error);
+        res.status(500).json({ message: 'Failed to synthesize speech.', error: error.message });
+    }
+});
+
 
 // --- SRS Update (per question) ---
 app.post('/api/vocabulary/update_srs', async (req, res) => {
