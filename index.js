@@ -2,7 +2,7 @@
 require('dotenv').config(); // Load environment variables from .env file
 const express = require('express');
 const path = require('path');
-const moment = require('moment'); // IMPORT: moment.js for date manipulation - RE-ADDED!
+const moment = require('moment'); // IMPORT: moment.js for date manipulation
 
 // IMPORT: Centralized database connection pool (assuming db.js is in the SAME directory)
 const db = require('./db');
@@ -36,7 +36,8 @@ function calculateSrsProgress(currentSrsLevel, isCorrect) {
             nextIntervalDays = 6; // 6 days after second correct
         } else {
             nextIntervalDays = Math.round(currentSrsLevel * 2.5);
-            if (nextIntervalDays < currentSrsLevel + 1) nextIntervalDays = currentInterval + 1; // Ensure it keeps increasing
+            // Ensure interval keeps increasing for higher levels, even if calculation is small
+            if (nextIntervalDays < currentSrsLevel + 1) nextIntervalDays = currentSrsLevel + 1;
         }
     } else {
         newSrsLevel = 0; // Reset level on incorrect answer
@@ -46,12 +47,12 @@ function calculateSrsProgress(currentSrsLevel, isCorrect) {
     nextIntervalDays = Math.max(0, nextIntervalDays);
 
     const nextReviewDate = moment().add(nextIntervalDays, 'days').format('YYYY-MM-DD');
-    const lastViewedAt = moment().format('YYYY-MM-DD HH:mm:ss'); // Current timestamp
+    const lastReviewedAt = moment().format('YYYY-MM-DD HH:mm:ss'); // Current timestamp for last_reviewed_at
 
     return {
         newSrsLevel,
         nextReviewDate,
-        lastViewedAt
+        lastReviewedAt // Corrected to lastReviewedAt
     };
 }
 
@@ -80,13 +81,12 @@ app.use('/api/users', userRoutes);
 app.get('/api/generate-ai-sentence', async (req, res) => {
     try {
         // 1. Fetch a random word from the vocabulary table
-        // Ensure you select the 'id' here for SRS tracking in frontend if you use this word later
         const [vocabWords] = await db.query('SELECT id, amharic_word, german_word FROM vocabulary ORDER BY RAND() LIMIT 1');
         if (vocabWords.length === 0) {
             return res.status(404).json({ message: 'No vocabulary words found to generate a sentence.' });
         }
         const randomVocabWord = vocabWords[0];
-        const { id, amharic_word, german_word } = randomVocabWord; // Get the ID here
+        const { id, amharic_word, german_word } = randomVocabWord;
 
         // 2. Construct a detailed prompt for Gemini
         const prompt = `Create a short, simple Amharic sentence using the Amharic word "${amharic_word}".
@@ -132,7 +132,8 @@ app.get('/api/generate-ai-sentence', async (req, res) => {
 });
 
 
-// --- SRS, XP, and Daily Streak Management ---
+// --- SRS Update (per question) ---
+// This endpoint now ONLY handles SRS progress for individual words.
 app.post('/api/vocabulary/update_srs', async (req, res) => {
     const { userId, vocabularyId, isCorrect } = req.body;
     if (!userId || vocabularyId === undefined || isCorrect === undefined) {
@@ -149,7 +150,7 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
         let currentSrsLevel = progressRows.length > 0 ? progressRows[0].srs_level : 0;
 
         // 2. Calculate new SRS parameters using the helper function
-        const { newSrsLevel, nextReviewDate, lastViewedAt } = calculateSrsProgress(currentSrsLevel, isCorrect);
+        const { newSrsLevel, nextReviewDate, lastReviewedAt } = calculateSrsProgress(currentSrsLevel, isCorrect);
 
         // 3. Update or insert SRS progress for the vocabulary word
         await db.query(
@@ -159,23 +160,42 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
                 srs_level = VALUES(srs_level),
                 next_review_date = VALUES(next_review_date),
                 last_reviewed_at = VALUES(last_reviewed_at)`,
-            [userId, vocabularyId, newSrsLevel, nextReviewDate, lastViewedAt]
+            [userId, vocabularyId, newSrsLevel, nextReviewDate, lastReviewedAt]
         );
 
-        // 4. Update XP for the user
-        let xpAwarded = 0;
-        if (isCorrect) {
-            xpAwarded = 10; // Award 10 XP for a correct answer
-            await db.query('UPDATE users SET xp = xp + ? WHERE user_id = ?', [xpAwarded, userId]);
-        }
+        // XP and Daily Streak logic REMOVED from here.
+        // They will be handled by the /api/exercise/complete endpoint.
 
-        // 5. Update Daily Streak Logic
+        res.json({ success: true, message: 'SRS progress updated.' });
+
+    } catch (error) {
+        console.error('Error updating SRS progress:', error); // Changed log message
+        res.status(500).json({ message: 'Failed to update SRS progress.', error: error.message });
+    }
+});
+
+
+// --- NEW: Exercise Completion Endpoint (for XP and Daily Streak) ---
+app.post('/api/exercise/complete', async (req, res) => {
+    const { userId, exerciseMode, score, totalQuestions } = req.body; // score and totalQuestions for potential future use or display
+    if (!userId || !exerciseMode) {
+        return res.status(400).json({ message: 'Missing required parameters (userId, exerciseMode).' });
+    }
+
+    try {
+        const xpAwardedForExercise = 50; // Fixed XP for completing an exercise
+
+        // 1. Update XP for the user
+        await db.query('UPDATE users SET xp = xp + ? WHERE user_id = ?', [xpAwardedForExercise, userId]);
+
+        // 2. Update Daily Streak Logic
         const today = moment().format('YYYY-MM-DD');
         let [userRows] = await db.query('SELECT daily_streak, last_learning_date, highest_streak FROM users WHERE user_id = ?', [userId]);
         let user = userRows[0];
 
         let newDailyStreak = user.daily_streak;
         let newHighestStreak = user.highest_streak;
+        let streakIncreased = false;
 
         // Check if learning activity happened today
         if (!user.last_learning_date || moment(user.last_learning_date).isBefore(today, 'day')) {
@@ -183,24 +203,39 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
             if (user.last_learning_date && moment(user.last_learning_date).isSame(moment().subtract(1, 'day'), 'day')) {
                 // If last learning was yesterday, increment streak
                 newDailyStreak++;
+                streakIncreased = true;
             } else {
                 // If not yesterday (or first learning activity), reset streak to 1
                 newDailyStreak = 1;
+                streakIncreased = true; // Streak is "new" or "reset", counts as an activity for today
             }
             // Update highest streak if current one is higher
             if (newDailyStreak > newHighestStreak) {
                 newHighestStreak = newDailyStreak;
             }
+            // Update last_learning_date only if streak was increased or reset for today
             await db.query('UPDATE users SET daily_streak = ?, last_learning_date = ?, highest_streak = ? WHERE user_id = ?',
                 [newDailyStreak, today, newHighestStreak, userId]);
         }
-        // If last_learning_date is today, no change to streak or last_learning_date
+        // If last_learning_date is today, no change to streak or last_learning_date,
+        // but XP is still awarded.
 
-        res.json({ success: true, xpAwarded, newDailyStreak, newHighestStreak });
+        // 3. Fetch the *current* total XP after update to send back
+        const [updatedUserRows] = await db.query('SELECT xp, daily_streak, highest_streak FROM users WHERE user_id = ?', [userId]);
+        const updatedUser = updatedUserRows[0];
+
+        res.json({
+            success: true,
+            xpAwarded: xpAwardedForExercise, // XP awarded for this specific exercise
+            totalXp: updatedUser.xp,        // User's total XP
+            newDailyStreak: updatedUser.daily_streak,
+            newHighestStreak: updatedUser.highest_streak,
+            streakIncreasedToday: streakIncreased // Indicate if streak was affected today
+        });
 
     } catch (error) {
-        console.error('Error updating SRS, XP or streak:', error);
-        res.status(500).json({ message: 'Failed to update progress.', error: error.message });
+        console.error('Error completing exercise and updating XP/streak:', error);
+        res.status(500).json({ message: 'Failed to complete exercise and update progress.', error: error.message });
     }
 });
 
@@ -243,7 +278,6 @@ app.get('/api/vocabulary', async (req, res) => {
         let sentences = []; // Initialize sentences as an empty array
         try {
             // Attempt to query sentences from a 'sentences' table if it exists
-            // Assuming your sentences table has columns like 'amharic_sentence', 'german_sentence', 'blank_word'
             const [sentencesRows] = await db.query('SELECT amharic_sentence AS amharic, german_sentence AS german, blank_word AS blank FROM sentences LIMIT 10');
             sentences = sentencesRows; // Assign if successful
         } catch (sentencesError) {
