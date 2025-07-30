@@ -139,10 +139,10 @@ app.get('/api/generate-ai-sentence', async (req, res) => {
 
 
 ---
-### **SRS, XP, and Daily Streak Management**
-This new endpoint handles updating user progress for SRS, awarding XP, and managing the daily streak.
+/// **SRS, XP, and Daily Streak Management**
+/// This new endpoint handles updating user progress for SRS, awarding XP, and managing the daily streak.
 
-```javascript
+
 app.post('/api/vocabulary/update_srs', async (req, res) => {
     const { userId, vocabularyId, isCorrect } = req.body;
     if (!userId || vocabularyId === undefined || isCorrect === undefined) {
