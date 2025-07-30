@@ -810,8 +810,8 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
         });
         feedbackMessage.textContent = '';
     } catch (error) {
-        console.error('Error fetching/displaying AI generated sentence:', error);
-        feedbackMessage.textContent = 'Error loading AI sentences. Please try again.';
+        console.error('Error fetching/displaying generated sentence:', error);
+        feedbackMessage.textContent = 'Error generating sentences. Please try again.';
         feedbackMessage.style.color = '#ef4444';
         setTimeout(showMainMenu, 3000);
     }
