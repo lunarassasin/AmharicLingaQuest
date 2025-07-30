@@ -52,21 +52,23 @@ function calculateSrsProgress(currentSrsLevel, isCorrect) {
     return {
         newSrsLevel,
         nextReviewDate,
-        lastReviewedAt // Corrected to lastReviewedAt
+        lastReviewedAt
     };
 }
 
 // Helper function to parse Gemini's specific output format
+// Note: The prompt to Gemini still uses "German: " as a label for the source language sentence,
+// but the content within will be in the requested source language.
 function parseGeminiSentenceOutput(text) {
-    const germanMatch = text.match(/German: "(.*?)"/);
+    const sourceLanguageSentenceMatch = text.match(/German: "(.*?)"/); // This will actually contain the sentence in the requested source language
     const amharicMatch = text.match(/Amharic: "(.*?)"/);
-    const blankWordMatch = text.match(/BlankWord: "(.*?)"/);
+    const blankWordMatch = text.match(/BlankWord: "(.*?)"/); // This will be the blank in the source language
 
-    if (germanMatch && amharicMatch && blankWordMatch) {
+    if (sourceLanguageSentenceMatch && amharicMatch && blankWordMatch) {
         return {
-            german: germanMatch[1],
+            sourceLanguageSentence: sourceLanguageSentenceMatch[1], // Renamed for clarity on backend
             amharic: amharicMatch[1],
-            blank: blankWordMatch[1]
+            blank: blankWordMatch[1] // This is the blank word in the source language
         };
     }
     return null;
@@ -78,31 +80,45 @@ function parseGeminiSentenceOutput(text) {
 app.use('/api/users', userRoutes);
 
 // --- API Endpoint to Generate AI Sentence ---
+// Now accepts sourceLanguage as a query parameter
 app.get('/api/generate-ai-sentence', async (req, res) => {
+    const { sourceLanguage } = req.query; // Get the selected source language
+    const sourceWordColumn = `${sourceLanguage}_word`; // e.g., 'english_word'
+
+    // Basic validation for sourceLanguage
+    if (!['german', 'english', 'french', 'spanish'].includes(sourceLanguage)) {
+        return res.status(400).json({ message: 'Invalid source language provided.' });
+    }
+
     try {
-        // 1. Fetch a random word from the vocabulary table
-        const [vocabWords] = await db.query('SELECT id, amharic_word, german_word FROM vocabulary ORDER BY RAND() LIMIT 1');
+        // 1. Fetch a random word from the vocabulary table, ensuring it has a translation in the selected source language
+        const [vocabWords] = await db.query(
+            `SELECT id, amharic_word, german_word, english_word, french_word, spanish_word FROM vocabulary WHERE ${sourceWordColumn} IS NOT NULL ORDER BY RAND() LIMIT 1`
+        );
         if (vocabWords.length === 0) {
-            return res.status(404).json({ message: 'No vocabulary words found to generate a sentence.' });
+            return res.status(404).json({ message: `No vocabulary words found for ${sourceLanguage} to generate a sentence.` });
         }
         const randomVocabWord = vocabWords[0];
-        const { id, amharic_word, german_word } = randomVocabWord;
+        const vocabId = randomVocabWord.id;
+        const amharic_word = randomVocabWord.amharic_word;
+        const source_word = randomVocabWord[sourceWordColumn]; // Get the word in the selected source language
 
         // 2. Construct a detailed prompt for Gemini
+        // The prompt is now dynamic based on the sourceLanguage
         const prompt = `Create a short, simple Amharic sentence using the Amharic word "${amharic_word}".
-        Provide the German translation of the sentence.
-        Identify the German word that should be replaced with a blank in the sentence (this will be "${german_word}").
+        Provide the ${sourceLanguage} translation of the sentence.
+        Identify the ${sourceLanguage} word that should be replaced with a blank in the sentence (this will be "${source_word}").
         The output should strictly follow this format:
-        German: "..."
+        German: "..." (This label is fixed for parsing, but content will be in sourceLanguage)
         Amharic: "..." (with blank placeholder '____' for the word "${amharic_word}")
-        BlankWord: "${german_word}"
+        BlankWord: "${source_word}"
         
-        Example (using 'water'):
+        Example (using 'water' in English):
         German: "I drink water."
         Amharic: "እኔ ____ እጠጣለሁ።"
         BlankWord: "water"
 
-        Now, generate a sentence using "${amharic_word}" (German: "${german_word}"):`;
+        Now, generate a sentence using "${amharic_word}" (${sourceLanguage}: "${source_word}"):`;
 
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
@@ -120,10 +136,15 @@ app.get('/api/generate-ai-sentence', async (req, res) => {
             return res.status(500).json({ message: 'Failed to parse AI generated sentence. Please try again.', raw: text });
         }
 
-        // Add the vocabulary ID to the parsed sentence object before sending to frontend
-        parsedSentence.vocabulary_id = id;
+        // The 'sourceLanguageSentence' property in parsedSentence holds the sentence in the selected source language
+        const finalSentenceData = {
+            [sourceLanguage]: parsedSentence.sourceLanguageSentence, // The sentence in the selected source language
+            amharic: parsedSentence.amharic,
+            blank: parsedSentence.blank, // The blank word in the selected source language
+            vocabulary_id: vocabId
+        };
 
-        res.json(parsedSentence); // Send the parsed structure to the frontend
+        res.json(finalSentenceData);
 
     } catch (error) {
         console.error('Error in /api/generate-ai-sentence:', error);
@@ -133,7 +154,6 @@ app.get('/api/generate-ai-sentence', async (req, res) => {
 
 
 // --- SRS Update (per question) ---
-// This endpoint now ONLY handles SRS progress for individual words.
 app.post('/api/vocabulary/update_srs', async (req, res) => {
     const { userId, vocabularyId, isCorrect } = req.body;
     if (!userId || vocabularyId === undefined || isCorrect === undefined) {
@@ -163,21 +183,18 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
             [userId, vocabularyId, newSrsLevel, nextReviewDate, lastReviewedAt]
         );
 
-        // XP and Daily Streak logic REMOVED from here.
-        // They will be handled by the /api/exercise/complete endpoint.
-
         res.json({ success: true, message: 'SRS progress updated.' });
 
     } catch (error) {
-        console.error('Error updating SRS progress:', error); // Changed log message
+        console.error('Error updating SRS progress:', error);
         res.status(500).json({ message: 'Failed to update SRS progress.', error: error.message });
     }
 });
 
 
-// --- NEW: Exercise Completion Endpoint (for XP and Daily Streak) ---
+// --- Exercise Completion Endpoint (for XP and Daily Streak) ---
 app.post('/api/exercise/complete', async (req, res) => {
-    const { userId, exerciseMode, score, totalQuestions } = req.body; // score and totalQuestions for potential future use or display
+    const { userId, exerciseMode, score, totalQuestions } = req.body;
     if (!userId || !exerciseMode) {
         return res.status(400).json({ message: 'Missing required parameters (userId, exerciseMode).' });
     }
@@ -244,7 +261,8 @@ app.post('/api/exercise/complete', async (req, res) => {
 app.get('/api/user/profile/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
-        const [userRows] = await db.query('SELECT username, xp, daily_streak, highest_streak FROM users WHERE user_id = ?', [userId]);
+        // Also fetch preferred_source_language
+        const [userRows] = await db.query('SELECT username, xp, daily_streak, highest_streak, preferred_source_language FROM users WHERE user_id = ?', [userId]);
         if (userRows.length === 0) {
             return res.status(404).json({ message: 'User not found.' });
         }
@@ -255,36 +273,66 @@ app.get('/api/user/profile/:userId', async (req, res) => {
     }
 });
 
-
-// --- UPDATED: API Endpoint to Fetch Vocabulary (with SRS logic) ---
-app.get('/api/vocabulary', async (req, res) => {
-    const userId = req.query.userId; // Get userId from query parameter
+// --- NEW: Endpoint to update user's preferred source language ---
+app.post('/api/user/update_language', async (req, res) => {
+    const { userId, language } = req.body;
+    if (!userId || !language) {
+        return res.status(400).json({ message: 'Missing userId or language.' });
+    }
+    if (!['german', 'english', 'french', 'spanish'].includes(language)) {
+        return res.status(400).json({ message: 'Invalid language provided.' });
+    }
 
     try {
-        let query = `
-            SELECT v.id AS vocabulary_id, v.amharic_word AS amharic, v.german_word AS german,
+        await db.query('UPDATE users SET preferred_source_language = ? WHERE user_id = ?', [language, userId]);
+        res.json({ success: true, message: 'Preferred language updated successfully.' });
+    } catch (error) {
+        console.error('Error updating preferred language:', error);
+        res.status(500).json({ message: 'Failed to update preferred language.', error: error.message });
+    }
+});
+
+
+// --- UPDATED: API Endpoint to Fetch Vocabulary (with SRS logic and dynamic language) ---
+app.get('/api/vocabulary', async (req, res) => {
+    const userId = req.query.userId;
+    const sourceLanguage = req.query.sourceLanguage || 'german'; // Default to german if not provided
+
+    const sourceWordColumn = `${sourceLanguage}_word`; // e.g., 'english_word'
+    const sourceSentenceColumn = `${sourceLanguage}_sentence`; // e.g., 'english_sentence'
+
+    // Basic validation for sourceLanguage
+    if (!['german', 'english', 'french', 'spanish'].includes(sourceLanguage)) {
+        return res.status(400).json({ message: 'Invalid source language provided.' });
+    }
+
+    try {
+        // Fetch vocabulary based on the selected source language
+        let vocabQuery = `
+            SELECT v.id AS vocabulary_id, v.amharic_word AS amharic, v.${sourceWordColumn} AS source_word,
                    COALESCE(uvp.srs_level, 0) AS srs_level,
                    COALESCE(uvp.next_review_date, '1970-01-01') AS next_review_date
             FROM vocabulary v
             LEFT JOIN user_vocabulary_progress uvp ON v.id = uvp.vocabulary_id AND uvp.user_id = ?
-            WHERE uvp.next_review_date IS NULL OR uvp.next_review_date <= CURDATE()
+            WHERE v.${sourceWordColumn} IS NOT NULL -- Only fetch words that have a translation in the selected source language
+              AND (uvp.next_review_date IS NULL OR uvp.next_review_date <= CURDATE())
             ORDER BY (uvp.next_review_date IS NULL) DESC, uvp.next_review_date ASC, RAND()
-            LIMIT 20; -- Limit to a reasonable number of words for a session
+            LIMIT 20;
         `;
-        let params = [userId];
-        
-        const [vocabulary] = await db.query(query, params);
+        const [vocabulary] = await db.query(vocabQuery, [userId]);
 
-        let sentences = []; // Initialize sentences as an empty array
+        // Fetch sentences based on the selected source language
+        let sentences = [];
         try {
-            // Attempt to query sentences from a 'sentences' table if it exists
-            const [sentencesRows] = await db.query('SELECT amharic_sentence AS amharic, german_sentence AS german, blank_word AS blank FROM sentences LIMIT 10');
-            sentences = sentencesRows; // Assign if successful
+            const [sentencesRows] = await db.query(
+                `SELECT amharic_sentence AS amharic, ${sourceSentenceColumn} AS source_sentence, blank_word AS blank_german FROM sentences WHERE ${sourceSentenceColumn} IS NOT NULL LIMIT 10`
+            );
+            sentences = sentencesRows;
         } catch (sentencesError) {
-            console.warn("Warning: Table 'sentences' doesn't exist or is inaccessible. Returning empty sentences array.", sentencesError.message);
+            console.warn(`Warning: Table 'sentences' column '${sourceSentenceColumn}' doesn't exist or is inaccessible. Returning empty sentences array.`, sentencesError.message);
         }
 
-        res.json({ vocabulary, sentences });
+        res.json({ vocabulary, sentences, sourceLanguage }); // Also send back the sourceLanguage for frontend confirmation
     } catch (error) {
         console.error('Error fetching vocabulary:', error);
         res.status(500).json({ message: 'Failed to fetch vocabulary.', error: error.message });
