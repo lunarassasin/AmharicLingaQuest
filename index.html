@@ -36,19 +36,23 @@
                     <p class="text-gray-600 text-sm mt-4 text-center">Bereits ein Konto? <a href="#" id="show-login-link" class="text-blue-600 hover:underline">Anmelden</a></p>
                 </div>
             </div>
-            <div id="main-menu" class="hidden"> 
-                <h1 class="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-2">Amharic LinguaQuest</h1>
-                <p class="text-center text-gray-500 mb-8">Wähle eine Übung aus</p>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <button data-exercise-mode="vocabulary" class="btn bg-blue-500 text-white p-6 rounded-lg font-semibold text-lg hover:bg-blue-600 transition-colors duration-300">Vocabulary Quiz</button>
-                    <button data-exercise-mode="matching" class="btn bg-green-500 text-white p-6 rounded-lg font-semibold text-lg hover:bg-green-600 transition-colors duration-300">Word Matching</button>
-                    <button data-exercise-mode="fill-blank" class="btn bg-indigo-500 text-white p-6 rounded-lg font-semibold text-lg hover:bg-indigo-600 transition-colors duration-300">Fill in the Blank</button>
-                    <button data-exercise-mode="listening" class="btn bg-yellow-500 text-white p-6 rounded-lg font-semibold text-lg hover:bg-yellow-600 transition-colors duration-300">Listening Practice</button>
-                    <button data-exercise-mode="speaking" class="btn bg-red-500 text-white p-6 rounded-lg font-semibold text-lg hover:bg-red-600 transition-colors duration-300">Speaking Practice</button>
-                </div>
-                <div id="streak-display" class="text-center mt-8 text-lg font-bold text-orange-500"></div>
-                <button id="logout-btn" class="mt-6 w-full bg-gray-200 text-gray-700 font-bold py-3 px-4 rounded-lg hover:bg-gray-300 transition-colors duration-300">Abmelden</button>
-            </div>
+            <div id="main-menu" class="hidden">
+    <h2 class="text-2xl font-bold mb-4">Dein Fortschritt</h2>
+    <div class="flex flex-col space-y-2 mb-8 text-gray-700">
+        <p id="xp-display" class="text-lg font-semibold">XP: 0</p>
+        <p id="daily-streak-display" class="text-lg font-semibold">Tages-Streak: 0 🔥</p>
+        <p id="streak-display" class="text-lg font-semibold">Höchster Streak: 🔥 0</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <button data-exercise-mode="vocabulary" class="btn">Wortschatz-Quiz</button>
+        <button data-exercise-mode="matching" class="btn">Wort-Matching</button>
+        <button data-exercise-mode="fill-blank" class="btn">Lückentext</button>
+        <button data-exercise-mode="listening" class="btn">Hörverständnis</button>
+        <button data-exercise-mode="speaking" class="btn">Sprechübung</button>
+        <button id="logout-btn" class="btn bg-red-500 hover:bg-red-600 text-white">Abmelden</button>
+    </div>
+</div>
             <div id="exercise-area" class="hidden flex-grow flex flex-col">
                 <div class="flex justify-between items-center mb-4">
                     <button id="back-to-menu" class="text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors duration-200">← Main Menu</button>
