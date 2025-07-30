@@ -132,7 +132,7 @@ app.get('/api/generate-ai-sentence', async (req, res) => {
 });
 
 
-// --- SRS, XP, and Daily Streak Management - RE-ADDED! ---
+// --- SRS, XP, and Daily Streak Management ---
 app.post('/api/vocabulary/update_srs', async (req, res) => {
     const { userId, vocabularyId, isCorrect } = req.body;
     if (!userId || vocabularyId === undefined || isCorrect === undefined) {
@@ -166,12 +166,14 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
         let xpAwarded = 0;
         if (isCorrect) {
             xpAwarded = 10; // Award 10 XP for a correct answer
-            await db.query('UPDATE users SET xp = xp + ? WHERE id = ?', [xpAwarded, userId]);
+            // FIX: Changed 'id' to 'user_id' in WHERE clause
+            await db.query('UPDATE users SET xp = xp + ? WHERE user_id = ?', [xpAwarded, userId]);
         }
 
         // 5. Update Daily Streak Logic
         const today = moment().format('YYYY-MM-DD');
-        let [userRows] = await db.query('SELECT daily_streak, last_learning_date, highest_streak FROM users WHERE id = ?', [userId]);
+        // FIX: Changed 'id' to 'user_id' in WHERE clause
+        let [userRows] = await db.query('SELECT daily_streak, last_learning_date, highest_streak FROM users WHERE user_id = ?', [userId]);
         let user = userRows[0];
 
         let newDailyStreak = user.daily_streak;
@@ -191,7 +193,8 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
             if (newDailyStreak > newHighestStreak) {
                 newHighestStreak = newDailyStreak;
             }
-            await db.query('UPDATE users SET daily_streak = ?, last_learning_date = ?, highest_streak = ? WHERE id = ?',
+            // FIX: Changed 'id' to 'user_id' in WHERE clause
+            await db.query('UPDATE users SET daily_streak = ?, last_learning_date = ?, highest_streak = ? WHERE user_id = ?',
                 [newDailyStreak, today, newHighestStreak, userId]);
         }
         // If last_learning_date is today, no change to streak or last_learning_date
@@ -205,11 +208,12 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
 });
 
 
-// --- User Profile Endpoint - RE-ADDED! ---
+// --- User Profile Endpoint ---
 app.get('/api/user/profile/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
-        const [userRows] = await db.query('SELECT username, xp, daily_streak, highest_streak FROM users WHERE id = ?', [userId]);
+        // FIX: Changed 'id' to 'user_id' in WHERE clause
+        const [userRows] = await db.query('SELECT username, xp, daily_streak, highest_streak FROM users WHERE user_id = ?', [userId]);
         if (userRows.length === 0) {
             return res.status(404).json({ message: 'User not found.' });
         }
@@ -227,13 +231,13 @@ app.get('/api/vocabulary', async (req, res) => {
 
     try {
         let query = `
-            SELECT v.id, v.amharic_word AS amharic, v.german_word AS german,
+            SELECT v.id AS vocabulary_id, v.amharic_word AS amharic, v.german_word AS german,
                    COALESCE(uvp.srs_level, 0) AS srs_level,
                    COALESCE(uvp.next_review_date, '1970-01-01') AS next_review_date
             FROM vocabulary v
             LEFT JOIN user_vocabulary_progress uvp ON v.id = uvp.vocabulary_id AND uvp.user_id = ?
             WHERE uvp.next_review_date IS NULL OR uvp.next_review_date <= CURDATE()
-            ORDER BY uvp.next_review_date ASC, RAND()
+            ORDER BY uvp.next_review_date ASC NULLS FIRST, RAND()
             LIMIT 20; -- Limit to a reasonable number of words for a session
         `;
         let params = [userId];
@@ -243,6 +247,7 @@ app.get('/api/vocabulary', async (req, res) => {
         let sentences = []; // Initialize sentences as an empty array
         try {
             // Attempt to query sentences from a 'sentences' table if it exists
+            // Assuming your sentences table has columns like 'amharic_sentence', 'german_sentence', 'blank_word'
             const [sentencesRows] = await db.query('SELECT amharic_sentence AS amharic, german_sentence AS german, blank_word AS blank FROM sentences LIMIT 10');
             sentences = sentencesRows; // Assign if successful
         } catch (sentencesError) {
