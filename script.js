@@ -2,7 +2,7 @@
 
 // --- DATA (will be fetched from server) ---
 let vocabulary = [];
-let sentences = []; // Still holds static sentences if fetched, but fill-blank uses AI now
+let sentences = [];
 
 // --- STATE MANAGEMENT ---
 let state = {
@@ -12,12 +12,14 @@ let state = {
     currentStreak: 0,
     highestStreak: 0, // This will now be primarily managed by the backend
     shuffledData: [],
-    selectedGerman: null,
+    selectedSourceWord: null, // Renamed from selectedGerman for matching, now holds the source language word
     selectedAmharic: null,
     matchedPairs: 0,
-    userToken: localStorage.getItem('jwtToken') || null, // Store JWT token
-    userId: localStorage.getItem('userId') || null,      // Store User ID
-    username: localStorage.getItem('username') || null,  // Store Username
+    userToken: localStorage.getItem('jwtToken') || null,
+    userId: localStorage.getItem('userId') || null,
+    username: localStorage.getItem('username') || null,
+    // NEW: Source language state
+    sourceLanguage: localStorage.getItem('sourceLanguage') || 'german', // Default to German
 };
 
 // --- SPEECH RECOGNITION SETUP ---
@@ -25,7 +27,7 @@ const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecogni
 let recognition;
 if (SpeechRecognition) {
     recognition = new SpeechRecognition();
-    recognition.lang = 'am-ET';
+    recognition.lang = 'am-ET'; // Amharic for target language
     recognition.continuous = false;
     recognition.interimResults = false;
 }
@@ -58,10 +60,14 @@ const progressBar = document.getElementById('progress-bar');
 const feedbackMessage = document.getElementById('feedback-message');
 const exerciseStreak = document.getElementById('exercise-streak');
 
-// UI Elements for XP and Daily Streak from index.html
+// UI Elements for XP and Daily Streak
 const xpDisplay = document.getElementById('xp-display');
 const dailyStreakDisplay = document.getElementById('daily-streak-display');
-const streakDisplay = document.getElementById('streak-display'); // Highest streak display
+const highestStreakDisplay = document.getElementById('streak-display'); // Renamed for clarity
+
+// NEW: Language selection UI
+const languageSelect = document.getElementById('language-select'); // Assuming a <select> element
+const currentLanguageDisplay = document.getElementById('current-language-display'); // To show selected language
 
 // Exercise-specific elements
 const ui = {
@@ -75,17 +81,32 @@ const micBtn = document.getElementById('mic-btn');
 const speechFeedback = document.getElementById('speech-feedback');
 
 
-// --- LOCAL STORAGE (Simplified as main progress is on server) ---
-function saveProgress() {
-    // This function is now mostly for saving auth details. XP/streak are server-managed.
+// --- LOCAL STORAGE ---
+// Simplified as main progress is on server, but language preference is local
+function saveLanguagePreference(lang) {
+    localStorage.setItem('sourceLanguage', lang);
+    state.sourceLanguage = lang;
+    updateLanguageDisplay();
 }
 
-function loadProgress() {
-    state.userId = localStorage.getItem('userId') || null;
-    state.username = localStorage.getItem('username') || null;
-    state.userToken = localStorage.getItem('jwtToken') || null;
+function loadLanguagePreference() {
+    state.sourceLanguage = localStorage.getItem('sourceLanguage') || 'german'; // Default
+    if (languageSelect) {
+        languageSelect.value = state.sourceLanguage;
+    }
+    updateLanguageDisplay();
+}
 
-    // Initial display will be updated by fetchUserProfile
+function updateLanguageDisplay() {
+    if (currentLanguageDisplay) {
+        const langMap = {
+            'german': 'Deutsch',
+            'english': 'Englisch',
+            'french': 'Französisch',
+            'spanish': 'Spanisch'
+        };
+        currentLanguageDisplay.textContent = `Lernsprache: ${langMap[state.sourceLanguage] || state.sourceLanguage}`;
+    }
 }
 
 // --- UTILITY ---
@@ -102,7 +123,6 @@ const speak = (text, lang) => {
 };
 
 // --- AUTHENTICATION FUNCTIONS ---
-
 function showAuthArea() {
     authArea.classList.remove('hidden');
     mainMenu.classList.add('hidden');
@@ -213,9 +233,11 @@ function handleLogout() {
     localStorage.removeItem('jwtToken');
     localStorage.removeItem('userId');
     localStorage.removeItem('username');
+    localStorage.removeItem('sourceLanguage'); // Clear language preference on logout
     state.userToken = null;
     state.userId = null;
     state.username = null;
+    state.sourceLanguage = 'german'; // Reset to default
     alert('Sie wurden abgemeldet.');
     showAuthArea();
 }
@@ -245,16 +267,25 @@ async function fetchUserProfile() {
 
         // Update DOM elements
         if (xpDisplay) xpDisplay.textContent = `XP: ${profileData.xp}`;
-        if (dailyStreakDisplay) dailyStreakDisplay.textContent = `Tages-Streak: ${profileData.daily_streak} 🔥`;
+        if (dailyStreakDisplay) dailyStreakDisplay.textContent = `Tages-Streak: ${profileData.daily_streak} �`;
         state.highestStreak = profileData.highest_streak;
-        if (streakDisplay) streakDisplay.textContent = `Höchster Streak: 🔥 ${state.highestStreak}`;
+        if (highestStreakDisplay) highestStreakDisplay.textContent = `Höchster Streak: 🔥 ${state.highestStreak}`;
+
+        // Set user's preferred language from profile if available, otherwise use local or default
+        if (profileData.preferred_source_language && profileData.preferred_source_language !== state.sourceLanguage) {
+            saveLanguagePreference(profileData.preferred_source_language);
+            // No need to refetch vocabulary here, as fetchVocabulary is called after login
+        } else {
+            // If no preference from backend, ensure local storage is used
+            loadLanguagePreference(); // Ensure UI reflects current state
+        }
 
     } catch (error) {
         console.error('Error fetching user profile:', error);
     }
 }
 
-// --- FETCH VOCABULARY FROM SERVER ---
+// --- FETCH VOCABULARY FROM SERVER (Now sends sourceLanguage) ---
 async function fetchVocabulary() {
     try {
         const headers = { 'Content-Type': 'application/json' };
@@ -267,7 +298,8 @@ async function fetchVocabulary() {
             return;
         }
 
-        const response = await fetch(`/api/vocabulary?userId=${state.userId}`, { headers });
+        // Pass sourceLanguage as a query parameter
+        const response = await fetch(`/api/vocabulary?userId=${state.userId}&sourceLanguage=${state.sourceLanguage}`, { headers });
         if (!response.ok) {
             if (response.status === 401 || response.status === 403) {
                 alert('Sitzung abgelaufen oder nicht autorisiert. Bitte melden Sie sich erneut an.');
@@ -279,10 +311,14 @@ async function fetchVocabulary() {
         const data = await response.json();
         vocabulary = data.vocabulary;
         sentences = data.sentences;
+        // Update sourceLanguage from backend response, ensuring consistency
+        state.sourceLanguage = data.sourceLanguage || state.sourceLanguage;
+        saveLanguagePreference(state.sourceLanguage); // Save to local storage
+
         console.log('Vocabulary loaded:', vocabulary);
         console.log('Sentences loaded:', sentences);
 
-        await fetchUserProfile();
+        await fetchUserProfile(); // Fetch profile to update XP/Streaks and potentially language preference
         showMainMenu();
     } catch (error) {
         console.error('Failed to fetch vocabulary:', error);
@@ -297,6 +333,7 @@ function showMainMenu() {
     mainMenu.classList.remove('hidden');
     exerciseArea.classList.add('hidden');
     resultScreen.classList.add('hidden');
+    updateLanguageDisplay(); // Ensure language display is updated when showing main menu
 }
 
 async function startExercise(mode) {
@@ -325,27 +362,27 @@ async function startExercise(mode) {
 
     switch (mode) {
         case 'vocabulary':
-            exerciseTitle.textContent = 'Wortschatz-Quiz';
+            exerciseTitle.textContent = `Wortschatz-Quiz (${getLanguageName(state.sourceLanguage)} - Amharisch)`;
             state.shuffledData = shuffleArray([...vocabulary]);
             displayVocabularyQuestion();
             break;
         case 'matching':
-            exerciseTitle.textContent = 'Wort-Matching';
+            exerciseTitle.textContent = `Wort-Matching (${getLanguageName(state.sourceLanguage)} - Amharisch)`;
             state.shuffledData = shuffleArray([...vocabulary]).slice(0, 5);
             state.matchedPairs = 0;
             displayMatchingExercise();
             break;
         case 'fill-blank':
-            exerciseTitle.textContent = 'Lückentext';
+            exerciseTitle.textContent = `Lückentext (${getLanguageName(state.sourceLanguage)} - Amharisch)`;
             await fetchAndDisplayGeneratedFillBlankSentenceAI();
             break;
         case 'listening':
-            exerciseTitle.textContent = 'Hörverständnis';
+            exerciseTitle.textContent = `Hörverständnis (${getLanguageName(state.sourceLanguage)} - Amharisch)`;
             state.shuffledData = shuffleArray([...vocabulary]);
             displayListeningQuestion();
             break;
         case 'speaking':
-            exerciseTitle.textContent = 'Sprechübung';
+            exerciseTitle.textContent = `Sprechübung (${getLanguageName(state.sourceLanguage)} - Amharisch)`;
             if (!recognition) {
                 alert("Entschuldigung, Ihr Browser unterstützt keine Spracherkennung. Versuchen Sie Chrome oder Edge.");
                 showMainMenu();
@@ -368,7 +405,7 @@ function nextQuestion() {
 
     const totalQuestions = state.shuffledData.length;
     if (state.currentQuestionIndex >= totalQuestions) {
-        showResults(); // Call showResults when exercise is finished
+        showResults();
         return;
     }
 
@@ -383,7 +420,7 @@ function updateProgress(total) {
     progressBar.style.width = `${((state.currentQuestionIndex + 1) / total) * 100}%`;
 }
 
-// --- MODIFIED: handleAnswer (now only for SRS and current streak) ---
+// --- handleAnswer (now only for SRS and current streak) ---
 function handleAnswer(isCorrect, correctAnswerProvided = null, vocabularyId = null) {
     if (isCorrect) {
         state.score++;
@@ -413,7 +450,7 @@ function handleAnswer(isCorrect, correctAnswerProvided = null, vocabularyId = nu
 
     // --- SRS Update Call (ONLY SRS here) ---
     if (vocabularyId && state.userId) {
-        updateUserSRSOnServer(vocabularyId, isCorrect); // Renamed for clarity
+        updateUserSRSOnServer(vocabularyId, isCorrect);
     }
 
     if (state.exerciseMode !== 'matching' && state.exerciseMode !== 'speaking') {
@@ -421,7 +458,7 @@ function handleAnswer(isCorrect, correctAnswerProvided = null, vocabularyId = nu
     }
 }
 
-// NEW: Function to update user SRS progress on server (renamed from updateUserProgressOnServer)
+// Function to update user SRS progress on server
 async function updateUserSRSOnServer(vocabularyId, isCorrect) {
     try {
         const response = await fetch('/api/vocabulary/update_srs', {
@@ -447,7 +484,7 @@ async function updateUserSRSOnServer(vocabularyId, isCorrect) {
         }
 
         const data = await response.json();
-        console.log('SRS update response:', data); // Should only confirm SRS update now
+        console.log('SRS update response:', data);
 
     } catch (error) {
         console.error('Error updating SRS on server:', error);
@@ -457,20 +494,34 @@ async function updateUserSRSOnServer(vocabularyId, isCorrect) {
 }
 
 
-// --- EXERCISE-SPECIFIC DISPLAY FUNCTIONS ---
+// --- EXERCISE-SPECIFIC DISPLAY FUNCTIONS (Now dynamic for source language) ---
+
+function getLanguageName(langCode) {
+    const names = {
+        'german': 'Deutsch',
+        'english': 'Englisch',
+        'french': 'Französisch',
+        'spanish': 'Spanisch'
+    };
+    return names[langCode] || langCode; // Fallback to code if not found
+}
 
 function displayVocabularyQuestion() {
-    const isAmharicToGerman = Math.random() > 0.5;
+    const isAmharicToSource = Math.random() > 0.5; // Amharic to selected source language
     const questionData = state.shuffledData[state.currentQuestionIndex];
     const vocabularyId = questionData.vocabulary_id;
-    const questionWord = isAmharicToGerman ? questionData.amharic : questionData.german;
-    const correctAnswer = isAmharicToGerman ? questionData.german : questionData.amharic;
-    const optionSource = isAmharicToGerman ? 'german' : 'amharic';
 
-    document.getElementById('vocab-prompt').textContent = `Was bedeutet das Wort auf ${isAmharicToGerman ? 'Deutsch' : 'Amharisch'}?`;
+    // Dynamically select the source word based on state.sourceLanguage
+    const sourceWord = questionData.source_word; // 'source_word' is aliased from backend
+
+    const questionWord = isAmharicToSource ? questionData.amharic : sourceWord;
+    const correctAnswer = isAmharicToSource ? sourceWord : questionData.amharic;
+    const optionSourceProp = isAmharicToSource ? 'source_word' : 'amharic'; // Property name for options
+
+    document.getElementById('vocab-prompt').textContent = `Was bedeutet das Wort auf ${isAmharicToSource ? getLanguageName(state.sourceLanguage) : 'Amharisch'}?`;
     document.getElementById('vocab-word').textContent = questionWord;
 
-    let options = shuffleArray([correctAnswer, ...shuffleArray(vocabulary.filter(v => v[optionSource] !== correctAnswer).map(v => v[optionSource])).slice(0, 3)]);
+    let options = shuffleArray([correctAnswer, ...shuffleArray(vocabulary.filter(v => v[optionSourceProp] !== correctAnswer).map(v => v[optionSourceProp])).slice(0, 3)]);
     const optionsContainer = document.getElementById('vocab-options');
     optionsContainer.innerHTML = '';
     options.forEach(opt => {
@@ -492,29 +543,30 @@ function displayVocabularyQuestion() {
 }
 
 function displayMatchingExercise() {
-    state.selectedGerman = null;
+    state.selectedSourceWord = null; // Renamed from selectedGerman
     state.selectedAmharic = null;
     state.matchedPairs = 0;
 
-    const germanContainer = document.getElementById('german-words');
+    const sourceContainer = document.getElementById('german-words'); // Re-using 'german-words' for source language
     const amharicContainer = document.getElementById('amharic-words');
-    germanContainer.innerHTML = '';
+    sourceContainer.innerHTML = '';
     amharicContainer.innerHTML = '';
 
-    const germanWords = shuffleArray(state.shuffledData.map(v => v.german));
+    // Dynamically get source words
+    const sourceWords = shuffleArray(state.shuffledData.map(v => v.source_word));
     const amharicWords = shuffleArray(state.shuffledData.map(v => v.amharic));
 
-    germanWords.forEach(word => {
+    sourceWords.forEach(word => {
         const btn = document.createElement('button');
         btn.textContent = word;
         btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-3 px-4 rounded-lg hover:bg-gray-100 transition-colors duration-200';
         btn.onclick = () => {
-            if (state.selectedGerman) state.selectedGerman.classList.remove('selected');
-            state.selectedGerman = btn;
+            if (state.selectedSourceWord) state.selectedSourceWord.classList.remove('selected');
+            state.selectedSourceWord = btn; // Storing the source language button here
             btn.classList.add('selected');
             checkMatch();
         };
-        germanContainer.appendChild(btn);
+        sourceContainer.appendChild(btn);
     });
 
     amharicWords.forEach(word => {
@@ -533,30 +585,31 @@ function displayMatchingExercise() {
 }
 
 function checkMatch() {
-    if (!state.selectedGerman || !state.selectedAmharic) return;
+    if (!state.selectedSourceWord || !state.selectedAmharic) return;
 
-    const germanText = state.selectedGerman.textContent;
+    const sourceText = state.selectedSourceWord.textContent; // This is now the source language text
     const amharicText = state.selectedAmharic.textContent;
-    const correctPair = vocabulary.find(v => v.german === germanText && v.amharic === amharicText);
+
+    // Find the correct pair in the vocabulary based on the selected source language
+    const correctPair = vocabulary.find(v => v.source_word === sourceText && v.amharic === amharicText);
 
     if (correctPair) {
         state.matchedPairs++;
-        state.selectedGerman.classList.add('matched');
+        state.selectedSourceWord.classList.add('matched');
         state.selectedAmharic.classList.add('matched');
-        state.selectedGerman.disabled = true;
+        state.selectedSourceWord.disabled = true;
         state.selectedAmharic.disabled = true;
-        // For matching, we don't update SRS per pair, only score/streak
         handleAnswer(true);
     } else {
-        state.selectedGerman.classList.add('incorrect');
+        state.selectedSourceWord.classList.add('incorrect');
         state.selectedAmharic.classList.add('incorrect');
         handleAnswer(false);
     }
 
     setTimeout(() => {
-        if (state.selectedGerman) state.selectedGerman.classList.remove('selected', 'incorrect');
+        if (state.selectedSourceWord) state.selectedSourceWord.classList.remove('selected', 'incorrect');
         if (state.selectedAmharic) state.selectedAmharic.classList.remove('selected', 'incorrect');
-        state.selectedGerman = null;
+        state.selectedSourceWord = null;
         state.selectedAmharic = null;
 
         if (state.matchedPairs === state.shuffledData.length) {
@@ -574,20 +627,22 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
         const optionsContainer = document.getElementById('fill-blank-options');
         optionsContainer.innerHTML = '';
 
-        const response = await fetch('/api/generate-ai-sentence');
+        // Pass sourceLanguage to the AI sentence generation endpoint
+        const response = await fetch(`/api/generate-ai-sentence?sourceLanguage=${state.sourceLanguage}`);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        const generatedData = await response.json();
+        const generatedData = await response.json(); // This will have properties like { english: "...", amharic: "...", blank: "...", vocabulary_id: ... }
 
-        if (!generatedData || !generatedData.amharic || !generatedData.german || !generatedData.blank || generatedData.vocabulary_id === undefined) {
-            throw new Error('Incomplete data received from AI sentence generation (missing vocabulary_id).');
+        if (!generatedData || !generatedData.amharic || !generatedData[state.sourceLanguage] || !generatedData.blank || generatedData.vocabulary_id === undefined) {
+            console.error("Incomplete AI data:", generatedData);
+            throw new Error('Incomplete data received from AI sentence generation.');
         }
 
         state.shuffledData = [{
-            german: generatedData.german,
+            source_sentence: generatedData[state.sourceLanguage], // The sentence in the selected source language
             amharic: generatedData.amharic,
-            blank: generatedData.blank,
+            blank: generatedData.blank, // The blank word in the selected source language
             vocabulary_id: generatedData.vocabulary_id
         }];
         state.currentQuestionIndex = 0;
@@ -595,11 +650,14 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
 
         const questionData = state.shuffledData[state.currentQuestionIndex];
         const sentenceContainer = document.getElementById('fill-blank-sentence');
-        sentenceContainer.innerHTML = questionData.amharic.replace('____', `<span class="font-bold text-blue-600">____</span>`);
+        // Display the source language sentence, replacing the blank marker
+        sentenceContainer.innerHTML = questionData.source_sentence.replace('____', `<span class="font-bold text-blue-600">____</span>`);
 
-        const correctAnswerAmharic = vocabulary.find(v => v.id === questionData.vocabulary_id)?.amharic;
+        // Get the correct source language word that corresponds to the blank
+        // This word is what the user needs to select.
+        const correctAnswerSource = vocabulary.find(v => v.vocabulary_id === questionData.vocabulary_id)?.source_word;
 
-        if (!correctAnswerAmharic) {
+        if (!correctAnswerSource) {
             console.error("Fehler: Das Lückenwort konnte nicht im lokalen Wortschatz gefunden werden (ID mismatch). Überspringe Frage.", questionData.blank, questionData.vocabulary_id);
             feedbackMessage.textContent = "Fehler: Lückenwort nicht gefunden im Wortschatz. Überspringen.";
             feedbackMessage.style.color = '#ef4444';
@@ -607,9 +665,10 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
             return;
         }
 
+        // Generate options for the blank. Include the correct answer and 3 random incorrect ones.
         const options = shuffleArray([
-            correctAnswerAmharic,
-            ...shuffleArray(vocabulary.filter(v => v.amharic !== correctAnswerAmharic).map(v => v.amharic)).slice(0, 3)
+            correctAnswerSource,
+            ...shuffleArray(vocabulary.filter(v => v.source_word !== correctAnswerSource).map(v => v.source_word)).slice(0, 3)
         ]);
         
         options.forEach(opt => {
@@ -617,11 +676,11 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
             btn.textContent = opt;
             btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-4 px-4 rounded-lg hover:bg-gray-100 transition-colors duration-200';
             btn.onclick = () => {
-                const isCorrect = (opt === correctAnswerAmharic);
-                handleAnswer(isCorrect, correctAnswerAmharic, questionData.vocabulary_id);
+                const isCorrect = (opt === correctAnswerSource);
+                handleAnswer(isCorrect, correctAnswerSource, questionData.vocabulary_id);
                 btn.classList.add(isCorrect ? 'correct' : 'incorrect');
                 if (!isCorrect) {
-                    const correctBtn = Array.from(optionsContainer.children).find(b => b.textContent === correctAnswerAmharic);
+                    const correctBtn = Array.from(optionsContainer.children).find(b => b.textContent === correctAnswerSource);
                     if (correctBtn) correctBtn.classList.add('correct');
                 }
             };
@@ -639,8 +698,8 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
 function displayListeningQuestion() {
     const questionData = state.shuffledData[state.currentQuestionIndex];
     const vocabularyId = questionData.vocabulary_id;
-    const correctAnswer = questionData.german;
-    const options = shuffleArray([correctAnswer, ...shuffleArray(vocabulary.filter(v => v.german !== correctAnswer).map(v => v.german)).slice(0, 3)]);
+    const correctAnswer = questionData.source_word; // Correct answer is now in the source language
+    const options = shuffleArray([correctAnswer, ...shuffleArray(vocabulary.filter(v => v.source_word !== correctAnswer).map(v => v.source_word)).slice(0, 3)]);
     const optionsContainer = document.getElementById('listening-options');
     optionsContainer.innerHTML = '';
 
@@ -665,7 +724,7 @@ function displaySpeakingExercise() {
     speechFeedback.textContent = '';
     const questionData = state.shuffledData[state.currentQuestionIndex];
     const vocabularyId = questionData.vocabulary_id;
-    document.getElementById('speaking-word').textContent = questionData.amharic;
+    document.getElementById('speaking-word').textContent = questionData.amharic; // User speaks Amharic word
     updateProgress(state.shuffledData.length);
 
     if (recognition) {
@@ -689,12 +748,11 @@ function displaySpeakingExercise() {
     }
 }
 
-// --- MODIFIED: showResults to call new /api/exercise/complete endpoint ---
+// --- showResults to call new /api/exercise/complete endpoint ---
 async function showResults() {
     exerciseArea.classList.add('hidden');
     resultScreen.classList.remove('hidden');
     
-    // Calculate total questions based on exercise type for accurate score display
     let totalQuestionsForScore = state.shuffledData.length;
     if (state.exerciseMode === 'fill-blank') {
         totalQuestionsForScore = state.score > 0 ? state.score : 0;
@@ -703,7 +761,7 @@ async function showResults() {
     document.getElementById('score').textContent = `${state.score} / ${totalQuestionsForScore}`;
     document.getElementById('restart-btn').onclick = () => startExercise(state.exerciseMode);
 
-    // --- NEW: Call backend to mark exercise complete and update XP/Streak ---
+    // --- Call backend to mark exercise complete and update XP/Streak ---
     if (state.userId) {
         try {
             const response = await fetch('/api/exercise/complete', {
@@ -716,7 +774,7 @@ async function showResults() {
                     userId: state.userId,
                     exerciseMode: state.exerciseMode,
                     score: state.score,
-                    totalQuestions: totalQuestionsForScore // Pass total questions for backend logging/future use
+                    totalQuestions: totalQuestionsForScore
                 })
             });
 
@@ -735,11 +793,10 @@ async function showResults() {
             // Update main menu displays with final values from backend
             if (xpDisplay) xpDisplay.textContent = `XP: ${data.totalXp}`;
             if (dailyStreakDisplay) dailyStreakDisplay.textContent = `Tages-Streak: ${data.newDailyStreak} 🔥`;
-            if (streakDisplay) streakDisplay.textContent = `Höchster Streak: 🔥 ${data.newHighestStreak}`;
+            if (highestStreakDisplay) highestStreakDisplay.textContent = `Höchster Streak: 🔥 ${data.newHighestStreak}`;
 
         } catch (error) {
             console.error('Error marking exercise complete on server:', error);
-            // Display an error to the user, but don't prevent them from seeing results
             alert('Fehler beim Speichern des Übungsabschlusses. XP und Streak wurden möglicherweise nicht aktualisiert.');
         }
     }
@@ -764,6 +821,44 @@ registerBtn.addEventListener('click', handleRegister);
 loginBtn.addEventListener('click', handleLogin);
 if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
 
+// NEW: Language selection event listener
+if (languageSelect) {
+    languageSelect.addEventListener('change', async (event) => {
+        const newLanguage = event.target.value;
+        if (state.userId && newLanguage !== state.sourceLanguage) {
+            try {
+                const response = await fetch('/api/user/update_language', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${state.userToken}`
+                    },
+                    body: JSON.stringify({ userId: state.userId, language: newLanguage })
+                });
+
+                if (response.ok) {
+                    console.log(`Language updated to: ${newLanguage}`);
+                    saveLanguagePreference(newLanguage); // Update local state and storage
+                    fetchVocabulary(); // Re-fetch vocabulary for the new language
+                } else {
+                    const errorData = await response.json();
+                    alert(`Fehler beim Aktualisieren der Sprache: ${errorData.message || 'Unbekannter Fehler'}`);
+                    languageSelect.value = state.sourceLanguage; // Revert selection on error
+                }
+            } catch (error) {
+                console.error('Error updating language preference:', error);
+                alert('Ein Netzwerkfehler ist aufgetreten. Sprache konnte nicht aktualisiert werden.');
+                languageSelect.value = state.sourceLanguage; // Revert selection on error
+            }
+        } else if (!state.userId) {
+            // If not logged in, just update local preference and refetch
+            saveLanguagePreference(newLanguage);
+            fetchVocabulary(); // This will lead to auth screen if not logged in
+        }
+    });
+}
+
+
 // Speech Recognition Event Listeners
 if (micBtn && recognition) {
     micBtn.addEventListener('click', () => {
@@ -775,7 +870,7 @@ if (micBtn && recognition) {
             console.error("Speech recognition error:", e);
             speechFeedback.textContent = 'Error starting mic.';
             micBtn.classList.remove('listening');
-        }
+        };
     });
 
     recognition.onend = () => {
@@ -790,10 +885,12 @@ if (micBtn && recognition) {
 
 // --- INITIALIZATION ---
 window.onload = () => {
-    loadProgress();
+    loadLanguagePreference(); // Load language preference first
+    // No need to call loadProgress() here, as it's redundant.
+    // fetchVocabulary() will handle loading user data and showing main menu after auth.
     if (state.userToken && state.userId && state.username) {
         console.log("Found existing session. Attempting auto-login and fetching data.");
-        fetchVocabulary();
+        fetchVocabulary(); // This will fetch vocab for the loaded language, then profile
     } else {
         console.log("No active session. Showing login/registration.");
         showAuthArea();
