@@ -2,7 +2,7 @@
 require('dotenv').config(); // Load environment variables from .env file
 const express = require('express');
 const path = require('path');
-const moment = require('moment'); // IMPORT: moment.js for date manipulation
+const moment = require('moment'); // IMPORT: moment.js for date manipulation - RE-ADDED!
 
 // IMPORT: Centralized database connection pool (assuming db.js is in the SAME directory)
 const db = require('./db');
@@ -19,13 +19,11 @@ const port = process.env.PORT || 3000;
 app.use(express.json()); // Middleware to parse JSON bodies for POST/PUT requests
 
 // Serve static files from the current directory (where index.js resides)
-// IMPORTANT: This means index.html, script.js, style.css, etc., should be in this folder.
 app.use(express.static(__dirname));
 
 // --- HELPER FUNCTIONS FOR SRS ---
 
 // Helper function for SRS logic (simplified SM-2 inspired)
-// This function determines the next review interval and srs_level based on correctness.
 function calculateSrsProgress(currentSrsLevel, isCorrect) {
     let newSrsLevel = currentSrsLevel;
     let nextIntervalDays;
@@ -37,10 +35,7 @@ function calculateSrsProgress(currentSrsLevel, isCorrect) {
         } else if (newSrsLevel === 2) {
             nextIntervalDays = 6; // 6 days after second correct
         } else {
-            // Exponentially increasing intervals for higher levels
-            // You can adjust the multiplier (e.g., 2.5, 3.0) for faster/slower progression
             nextIntervalDays = Math.round(currentSrsLevel * 2.5);
-            // Ensure interval keeps increasing for higher levels, even if calculation is small
             if (nextIntervalDays < currentSrsLevel + 1) nextIntervalDays = currentSrsLevel + 1;
         }
     } else {
@@ -48,7 +43,6 @@ function calculateSrsProgress(currentSrsLevel, isCorrect) {
         nextIntervalDays = 0; // Immediate review (today)
     }
 
-    // Ensure nextIntervalDays is at least 0 (for immediate review on incorrect)
     nextIntervalDays = Math.max(0, nextIntervalDays);
 
     const nextReviewDate = moment().add(nextIntervalDays, 'days').format('YYYY-MM-DD');
@@ -61,7 +55,7 @@ function calculateSrsProgress(currentSrsLevel, isCorrect) {
     };
 }
 
-// Helper function to parse Gemini's specific output format (kept from your original)
+// Helper function to parse Gemini's specific output format
 function parseGeminiSentenceOutput(text) {
     const germanMatch = text.match(/German: "(.*?)"/);
     const amharicMatch = text.match(/Amharic: "(.*?)"/);
@@ -71,7 +65,7 @@ function parseGeminiSentenceOutput(text) {
         return {
             german: germanMatch[1],
             amharic: amharicMatch[1],
-            blank: blankWordMatch[1] // This is the German word that was intended to be the blank
+            blank: blankWordMatch[1]
         };
     }
     return null;
@@ -82,11 +76,11 @@ function parseGeminiSentenceOutput(text) {
 // MOUNT: User authentication routes
 app.use('/api/users', userRoutes);
 
-// --- MODIFIED: API Endpoint to Generate AI Sentence ---
+// --- API Endpoint to Generate AI Sentence ---
 app.get('/api/generate-ai-sentence', async (req, res) => {
     try {
         // 1. Fetch a random word from the vocabulary table
-        // We now need the vocabulary ID for SRS tracking if this word is used.
+        // Ensure you select the 'id' here for SRS tracking in frontend if you use this word later
         const [vocabWords] = await db.query('SELECT id, amharic_word, german_word FROM vocabulary ORDER BY RAND() LIMIT 1');
         if (vocabWords.length === 0) {
             return res.status(404).json({ message: 'No vocabulary words found to generate a sentence.' });
@@ -138,11 +132,7 @@ app.get('/api/generate-ai-sentence', async (req, res) => {
 });
 
 
-
-/// **SRS, XP, and Daily Streak Management**
-/// This new endpoint handles updating user progress for SRS, awarding XP, and managing the daily streak.
-
-
+// --- SRS, XP, and Daily Streak Management - RE-ADDED! ---
 app.post('/api/vocabulary/update_srs', async (req, res) => {
     const { userId, vocabularyId, isCorrect } = req.body;
     if (!userId || vocabularyId === undefined || isCorrect === undefined) {
@@ -190,7 +180,7 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
         // Check if learning activity happened today
         if (!user.last_learning_date || moment(user.last_learning_date).isBefore(today, 'day')) {
             // If last learning was not today
-            if (moment(user.last_learning_date).isSame(moment().subtract(1, 'day'), 'day')) {
+            if (user.last_learning_date && moment(user.last_learning_date).isSame(moment().subtract(1, 'day'), 'day')) {
                 // If last learning was yesterday, increment streak
                 newDailyStreak++;
             } else {
@@ -213,11 +203,67 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
         res.status(500).json({ message: 'Failed to update progress.', error: error.message });
     }
 });
+
+
+// --- User Profile Endpoint - RE-ADDED! ---
+app.get('/api/user/profile/:userId', async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const [userRows] = await db.query('SELECT username, xp, daily_streak, highest_streak FROM users WHERE id = ?', [userId]);
+        if (userRows.length === 0) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+        res.json(userRows[0]);
+    } catch (error) {
+        console.error('Error fetching user profile:', error);
+        res.status(500).json({ message: 'Failed to fetch user profile.', error: error.message });
+    }
+});
+
+
+// --- UPDATED: API Endpoint to Fetch Vocabulary (with SRS logic) ---
+app.get('/api/vocabulary', async (req, res) => {
+    const userId = req.query.userId; // Get userId from query parameter
+
+    try {
+        let query = `
+            SELECT v.id, v.amharic_word AS amharic, v.german_word AS german,
+                   COALESCE(uvp.srs_level, 0) AS srs_level,
+                   COALESCE(uvp.next_review_date, '1970-01-01') AS next_review_date
+            FROM vocabulary v
+            LEFT JOIN user_vocabulary_progress uvp ON v.id = uvp.vocabulary_id AND uvp.user_id = ?
+            WHERE uvp.next_review_date IS NULL OR uvp.next_review_date <= CURDATE()
+            ORDER BY uvp.next_review_date ASC, RAND()
+            LIMIT 20; -- Limit to a reasonable number of words for a session
+        `;
+        let params = [userId];
+        
+        const [vocabulary] = await db.query(query, params);
+
+        let sentences = []; // Initialize sentences as an empty array
+        try {
+            // Attempt to query sentences from a 'sentences' table if it exists
+            const [sentencesRows] = await db.query('SELECT amharic_sentence AS amharic, german_sentence AS german, blank_word AS blank FROM sentences LIMIT 10');
+            sentences = sentencesRows; // Assign if successful
+        } catch (sentencesError) {
+            console.warn("Warning: Table 'sentences' doesn't exist or is inaccessible. Returning empty sentences array.", sentencesError.message);
+        }
+
+        res.json({ vocabulary, sentences });
+    } catch (error) {
+        console.error('Error fetching vocabulary:', error);
+        res.status(500).json({ message: 'Failed to fetch vocabulary.', error: error.message });
+    }
+});
+
+
+// --- CATCH-ALL ROUTE for Frontend Routing (MUST BE THE LAST ROUTE!) ---
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-
+// --- START THE SERVER ---
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+    console.log(`Amharic LinguaQuest app listening at http://localhost:${port}`);
+    console.log(`Open your browser at http://localhost:${port}`);
 });
