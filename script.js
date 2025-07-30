@@ -763,7 +763,7 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
             vocabulary_id: generatedData.vocabulary_id
         }];
         state.currentQuestionIndex = 0;
-        updateProgress(1);
+        updateProgress(1); // This line was incomplete in your provided code
 
         const questionData = state.shuffledData[state.currentQuestionIndex];
         const sentenceContainer = document.getElementById('fill-blank-sentence');
