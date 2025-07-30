@@ -771,18 +771,22 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
         sentenceContainer.innerHTML = questionData.source_sentence.replace('____', `<span class="font-bold text-blue-600">____</span>`);
 
         // Get the correct source language word that corresponds to the blank
-        // This word is what the user needs to select.
-        const correctAnswerSource = vocabulary.find(v => v.vocabulary_id === questionData.vocabulary_id)?.[`${state.sourceLanguage}_word`];
+        // IMPORTANT FIX: Use generatedData.blank directly as it's the word the AI chose for the blank.
+        const correctAnswerSource = generatedData.blank;
 
-        if (!correctAnswerSource) {
-            console.error("Error: The blank word could not be found in the local vocabulary (ID mismatch). Skipping question.", questionData.blank, questionData.vocabulary_id);
-            feedbackMessage.textContent = "Error: Blank word not found in vocabulary. Skipping.";
-            feedbackMessage.style.color = '#ef4444';
-            setTimeout(nextQuestion, 2000);
-            return;
+        // We still try to find the vocabulary item locally to get its ID for SRS updates.
+        // If it's not found, it means the AI picked a word not currently in the user's SRS review queue.
+        const localVocabItem = vocabulary.find(v => v.vocabulary_id === questionData.vocabulary_id);
+
+        if (!localVocabItem) {
+            console.warn("Warning: The blank word's vocabulary_id was not found in the local SRS vocabulary. SRS progress might not be updated correctly for this specific word.", questionData.blank, questionData.vocabulary_id);
+            // We can still proceed with the exercise, but SRS update for this word might be skipped or inaccurate.
+            // The error message to the user can be removed or changed to a less critical warning.
+            // Removing the `return` here allows the exercise to continue.
         }
 
         // Generate options for the blank. Include the correct answer and 3 random incorrect ones.
+        // Ensure options are also in the correct source language.
         const options = shuffleArray([
             correctAnswerSource,
             ...shuffleArray(vocabulary.filter(v => v[`${state.sourceLanguage}_word`] !== correctAnswerSource).map(v => v[`${state.sourceLanguage}_word`])).slice(0, 3)
@@ -794,7 +798,8 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
             btn.className = 'btn w-full bg-white border-2 border-gray-300 text-gray-700 font-semibold py-4 px-4 rounded-lg hover:bg-gray-100 transition-colors duration-200';
             btn.onclick = () => {
                 const isCorrect = (opt === correctAnswerSource);
-                handleAnswer(isCorrect, correctAnswerSource, questionData.vocabulary_id);
+                // Pass the vocabulary_id from the generated data, as it's the source of truth for the AI's chosen word.
+                handleAnswer(isCorrect, correctAnswerSource, questionData.vocabulary_id); 
                 btn.classList.add(isCorrect ? 'correct' : 'incorrect');
                 if (!isCorrect) {
                     const correctBtn = Array.from(optionsContainer.children).find(b => b.textContent === correctAnswerSource);
