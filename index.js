@@ -142,7 +142,7 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
     try {
         // 1. Fetch current progress for the word/user
         let [progressRows] = await db.query(
-            'SELECT srs_level, next_review_date, last_viewed_at FROM user_vocabulary_progress WHERE user_id = ? AND vocabulary_id = ?',
+            'SELECT srs_level, next_review_date, last_reviewed_at FROM user_vocabulary_progress WHERE user_id = ? AND vocabulary_id = ?',
             [userId, vocabularyId]
         );
 
@@ -153,12 +153,12 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
 
         // 3. Update or insert SRS progress for the vocabulary word
         await db.query(
-            `INSERT INTO user_vocabulary_progress (user_id, vocabulary_id, srs_level, next_review_date, last_viewed_at)
+            `INSERT INTO user_vocabulary_progress (user_id, vocabulary_id, srs_level, next_review_date, last_reviewed_at)
              VALUES (?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
                 srs_level = VALUES(srs_level),
                 next_review_date = VALUES(next_review_date),
-                last_viewed_at = VALUES(last_viewed_at)`,
+                last_reviewed_at = VALUES(last_reviewed_at)`,
             [userId, vocabularyId, newSrsLevel, nextReviewDate, lastViewedAt]
         );
 
