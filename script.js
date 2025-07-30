@@ -224,7 +224,7 @@ async function synthesizeSpeech(text, lang) {
             }
         }
     }
-}
+
 
 const speak = (text, lang) => {
     if (lang === 'am-ET') {
