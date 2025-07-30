@@ -41,10 +41,22 @@
             </div>
             <!-- --- END AUTHENTICATION AREA --- -->
 
-            <!-- --- MAIN MENU (Initially Hidden, with XP/Streak displays) --- -->
+            <!-- --- MAIN MENU (Initially Hidden, with XP/Streak displays and Language Selector) --- -->
             <div id="main-menu" class="hidden">
                 <h1 class="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-2">Amharic LinguaQuest</h1>
                 <p class="text-center text-gray-500 mb-8">Wähle eine Übung aus</p>
+
+                <!-- Language Selection -->
+                <div class="mb-6 text-center">
+                    <label for="language-select" class="block text-gray-700 text-sm font-bold mb-2">Lernsprache wählen:</label>
+                    <select id="language-select" class="block w-full max-w-xs mx-auto p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="german">Deutsch - Amharisch</option>
+                        <option value="english">Englisch - Amharisch</option>
+                        <option value="french">Französisch - Amharisch</option>
+                        <option value="spanish">Spanisch - Amharisch</option>
+                    </select>
+                    <p id="current-language-display" class="text-sm text-gray-500 mt-2"></p>
+                </div>
 
                 <!-- Progress Display (XP, Daily Streak, Highest Streak) -->
                 <h2 class="text-2xl font-bold mb-4 text-center text-gray-800">Dein Fortschritt</h2>
@@ -85,8 +97,9 @@
                 </div>
 
                 <div id="matching-ui" class="hidden">
-                    <p class="text-center text-lg text-gray-600 mb-4">Tippe auf ein deutsches Wort und dann auf die amharische Übersetzung.</p>
+                    <p class="text-center text-lg text-gray-600 mb-4">Tippe auf ein Wort und dann auf die amharische Übersetzung.</p>
                     <div class="grid grid-cols-2 gap-4">
+                        <!-- Renamed from german-words to source-words for clarity, but ID remains 'german-words' to avoid script.js changes -->
                         <div id="german-words" class="flex flex-col gap-3"></div>
                         <div id="amharic-words" class="flex flex-col gap-3"></div>
                     </div>
