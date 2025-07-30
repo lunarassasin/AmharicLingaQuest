@@ -79,6 +79,7 @@ const ui = {
 };
 const micBtn = document.getElementById('mic-btn');
 const speechFeedback = document.getElementById('speech-feedback');
+const playAudioBtn = document.getElementById('play-audio-btn'); // Get reference to the play audio button
 
 
 // --- LOCAL STORAGE ---
@@ -100,25 +101,141 @@ function loadLanguagePreference() {
 function updateLanguageDisplay() {
     if (currentLanguageDisplay) {
         const langMap = {
-            'german': 'Deutsch',
-            'english': 'Englisch',
-            'french': 'Französisch',
-            'spanish': 'Spanisch'
+            'german': 'German',
+            'english': 'English',
+            'french': 'French',
+            'spanish': 'Spanish'
         };
-        currentLanguageDisplay.textContent = `Lernsprache: ${langMap[state.sourceLanguage] || state.sourceLanguage}`;
+        currentLanguageDisplay.textContent = `Learning Language: ${langMap[state.sourceLanguage] || state.sourceLanguage}`;
     }
 }
 
 // --- UTILITY ---
 const shuffleArray = (array) => array.sort(() => Math.random() - 0.5);
+
+// Helper to convert base64 to ArrayBuffer
+function base64ToArrayBuffer(base64) {
+    const binaryString = window.atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+// Helper to convert PCM to WAV Blob
+function pcmToWav(pcmData, sampleRate) {
+    const numChannels = 1;
+    const bytesPerSample = 2; // PCM 16-bit
+    const blockAlign = numChannels * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+
+    const wavHeader = new ArrayBuffer(44);
+    const view = new DataView(wavHeader);
+
+    // RIFF chunk
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + pcmData.byteLength, true); // ChunkSize
+    writeString(view, 8, 'WAVE');
+
+    // FMT sub-chunk
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
+    view.setUint16(20, 1, true); // AudioFormat (1 for PCM)
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, 16, true); // BitsPerSample
+
+    // DATA sub-chunk
+    writeString(view, 36, 'data');
+    view.setUint32(40, pcmData.byteLength, true); // Subchunk2Size
+
+    const combined = new Uint8Array(wavHeader.byteLength + pcmData.byteLength);
+    combined.set(new Uint8Array(wavHeader), 0);
+    combined.set(new Uint8Array(pcmData), wavHeader.byteLength);
+
+    return new Blob([combined], { type: 'audio/wav' });
+}
+
+function writeString(view, offset, string) {
+    for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+    }
+}
+
+// New function to synthesize speech using backend API
+async function synthesizeSpeech(text, lang) {
+    if (playAudioBtn) {
+        playAudioBtn.disabled = true;
+        playAudioBtn.innerHTML = '<svg class="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+    }
+
+    try {
+        const apiKey = ""; // Canvas will inject the API key at runtime
+        const apiUrl = `/api/synthesize-amharic-speech`; // Use relative path to your backend endpoint
+
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, lang }) // Send text and language to backend
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        const audioData = result?.audioData;
+        const mimeType = result?.mimeType;
+        const sampleRate = result?.sampleRate;
+
+        if (audioData && mimeType && mimeType.startsWith("audio/L16") && sampleRate) {
+            const pcmData = base64ToArrayBuffer(audioData);
+            const pcm16 = new Int16Array(pcmData); // API returns signed PCM16 audio data.
+            const wavBlob = pcmToWav(pcm16, sampleRate);
+            const audioUrl = URL.createObjectURL(wavBlob);
+            
+            const audio = new Audio(audioUrl);
+            audio.play();
+            audio.onended = () => {
+                URL.revokeObjectURL(audioUrl); // Clean up the object URL after playing
+                if (playAudioBtn) {
+                    playAudioBtn.disabled = false;
+                    playAudioBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16"><path d="M11.536 14.01A8.473 8.473 0 0 0 14.026 8a8.473 8.473 0 0 0-2.49-6.01l-1.414 1.414A6.472 6.472 0 0 1 12.026 8a6.472 6.472 0 0 1-1.904 4.606l1.414 1.414zM10.121 12.596A6.48 6.48 0 0 0 12.026 8a6.48 6.48 0 0 0-1.905-4.596l-1.414 1.414A4.486 4.486 0 0 1 10.026 8a4.486 4.486 0 0 1-1.313 3.182l1.414 1.414zM8.707 11.182A4.486 4.486 0 0 0 10.026 8a4.486 4.486 0 0 0-1.319-3.182L7.293 6.23A2.488 2.488 0 0 1 8.026 8a2.488 2.488 0 0 1-.732 1.768l1.414 1.414zM6 2.5a.5.5 0 0 1 .5.5v10a.5.5 0 0 1-1 0v-10a.5.5 0 0 1 .5-.5zM4 4.5a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0v-6a.5.5 0 0 1 .5-.5zm-2 2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2a.5.5 0 0 1 .5-.5z"/></svg>';
+                }
+            };
+        } else {
+            console.error("Invalid audio data received from API:", result);
+            alert("Failed to play audio: Invalid data.");
+            if (playAudioBtn) {
+                playAudioBtn.disabled = false;
+                playAudioBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16"><path d="M11.536 14.01A8.473 8.473 0 0 0 14.026 8a8.473 8.473 0 0 0-2.49-6.01l-1.414 1.414A6.472 6.472 0 0 1 12.026 8a6.472 6.472 0 0 1-1.904 4.606l1.414 1.414zM10.121 12.596A6.48 6.48 0 0 0 12.026 8a6.48 6.48 0 0 0-1.905-4.596l-1.414 1.414A4.486 4.486 0 0 1 10.026 8a4.486 4.486 0 0 1-1.313 3.182l1.414 1.414zM8.707 11.182A4.486 4.486 0 0 0 10.026 8a4.486 4.486 0 0 0-1.319-3.182L7.293 6.23A2.488 2.488 0 0 1 8.026 8a2.488 2.488 0 0 1-.732 1.768l1.414 1.414zM6 2.5a.5.5 0 0 1 .5.5v10a.5.5 0 0 1-1 0v-10a.5.5 0 0 1 .5-.5zM4 4.5a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0v-6a.5.5 0 0 1 .5-.5zm-2 2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2a.5.5 0 0 1 .5-.5z"/></svg>';
+            }
+        }
+    } catch (error) {
+        console.error('Error synthesizing speech:', error);
+        alert('Failed to synthesize speech. Please try again.');
+        if (playAudioBtn) {
+            playAudioBtn.disabled = false;
+            playAudioBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16"><path d="M11.536 14.01A8.473 8.473 0 0 0 14.026 8a8.473 8.473 0 0 0-2.49-6.01l-1.414 1.414A6.472 6.472 0 0 1 12.026 8a6.472 6.472 0 0 1-1.904 4.606l1.414 1.414zM10.121 12.596A6.48 6.48 0 0 0 12.026 8a6.48 6.48 0 0 0-1.905-4.596l-1.414 1.414A4.486 4.486 0 0 1 10.026 8a4.486 4.486 0 0 1-1.313 3.182l1.414 1.414zM8.707 11.182A4.486 4.486 0 0 0 10.026 8a4.486 4.486 0 0 0-1.319-3.182L7.293 6.23A2.488 2.488 0 0 1 8.026 8a2.488 2.488 0 0 1-.732 1.768l1.414 1.414zM6 2.5a.5.5 0 0 1 .5.5v10a.5.5 0 0 1-1 0v-10a.5.5 0 0 1 .5-.5zM4 4.5a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0v-6a.5.5 0 0 1 .5-.5zm-2 2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2a.5.5 0 0 1 .5-.5z"/></svg>';
+            }
+        }
+    }
+}
+
 const speak = (text, lang) => {
-    if ('speechSynthesis' in window) {
+    if (lang === 'am-ET') {
+        synthesizeSpeech(text, lang); // Use the new API for Amharic
+    } else if ('speechSynthesis' in window) {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = lang;
         utterance.rate = 0.9;
         window.speechSynthesis.speak(utterance);
     } else {
-        console.warn("Speech synthesis not supported in this browser.");
+        console.warn("Speech synthesis not supported in this browser for non-Amharic languages.");
     }
 };
 
@@ -703,8 +820,10 @@ function displayListeningQuestion() {
     const optionsContainer = document.getElementById('listening-options');
     optionsContainer.innerHTML = '';
 
-    document.getElementById('play-audio-btn').onclick = () => speak(questionData.amharic, 'am-ET');
-    speak(questionData.amharic, 'am-ET');
+    if (playAudioBtn) {
+        playAudioBtn.onclick = () => speak(questionData.amharic, 'am-ET');
+    }
+    speak(questionData.amharic, 'am-ET'); // Automatically play on question display
 
     options.forEach(opt => {
         const btn = document.createElement('button');
