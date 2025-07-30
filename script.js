@@ -2,7 +2,7 @@
 
 // --- DATA (will be fetched from server) ---
 let vocabulary = [];
-let sentences = []; // This will remain an empty array as sentences are AI generated
+let sentences = [];
 
 // --- STATE MANAGEMENT ---
 let state = {
@@ -19,7 +19,7 @@ let state = {
     userId: localStorage.getItem('userId') || null,
     username: localStorage.getItem('username') || null,
     // NEW: Source language state
-    sourceLanguage: localStorage.getItem('sourceLanguage') || 'german', // Default to German
+    sourceLanguage: localStorage.getItem('sourceLanguage') || 'english', // Default to ENGLISH
 };
 
 // --- SPEECH RECOGNITION SETUP ---
@@ -90,7 +90,7 @@ function saveLanguagePreference(lang) {
 }
 
 function loadLanguagePreference() {
-    state.sourceLanguage = localStorage.getItem('sourceLanguage') || 'german'; // Default
+    state.sourceLanguage = localStorage.getItem('sourceLanguage') || 'english'; // Default to ENGLISH
     if (languageSelect) {
         languageSelect.value = state.sourceLanguage;
     }
@@ -149,15 +149,15 @@ async function handleRegister() {
     const confirmPassword = registerConfirmPasswordInput.value.trim();
 
     if (!username || !password || !confirmPassword) {
-        authFeedback.textContent = 'Bitte füllen Sie alle Felder aus.';
+        authFeedback.textContent = 'Please fill in all fields.';
         return;
     }
     if (password !== confirmPassword) {
-        authFeedback.textContent = 'Passwörter stimmen nicht überein.';
+        authFeedback.textContent = 'Passwords do not match.';
         return;
     }
     if (password.length < 6) {
-        authFeedback.textContent = 'Passwort muss mindestens 6 Zeichen lang sein.';
+        authFeedback.textContent = 'Password must be at least 6 characters long.';
         return;
     }
 
@@ -170,19 +170,19 @@ async function handleRegister() {
 
         const data = await response.json();
         if (response.ok) {
-            authFeedback.textContent = 'Registrierung erfolgreich! Bitte melden Sie sich an.';
+            authFeedback.textContent = 'Registration successful! Please log in.';
             authFeedback.style.color = '#22c55e';
             setTimeout(showLoginForm, 1500);
             registerUsernameInput.value = '';
             registerPasswordInput.value = '';
             registerConfirmPasswordInput.value = '';
         } else {
-            authFeedback.textContent = data.msg || 'Registrierung fehlgeschlagen.';
+            authFeedback.textContent = data.msg || 'Registration failed.';
             authFeedback.style.color = '#ef4444';
         }
     } catch (error) {
         console.error('Registration error:', error);
-        authFeedback.textContent = 'Ein Serverfehler ist aufgetreten.';
+        authFeedback.textContent = 'A server error occurred.';
         authFeedback.style.color = '#ef4444';
     }
 }
@@ -192,7 +192,7 @@ async function handleLogin() {
     const password = loginPasswordInput.value.trim();
 
     if (!username || !password) {
-        authFeedback.textContent = 'Bitte geben Sie Benutzername und Passwort ein.';
+        authFeedback.textContent = 'Please enter username and password.';
         return;
     }
 
@@ -207,12 +207,12 @@ async function handleLogin() {
         if (response.ok) {
             handleAuthSuccess(data.token, data.user.id, data.user.username);
         } else {
-            authFeedback.textContent = data.msg || 'Anmeldung fehlgeschlagen.';
+            authFeedback.textContent = data.msg || 'Login failed.';
             authFeedback.style.color = '#ef4444';
         }
     } catch (error) {
         console.error('Login error:', error);
-        authFeedback.textContent = 'Ein Serverfehler ist aufgetreten.';
+        authFeedback.textContent = 'A server error occurred.';
         authFeedback.style.color = '#ef4444';
     }
 }
@@ -237,8 +237,8 @@ function handleLogout() {
     state.userToken = null;
     state.userId = null;
     state.username = null;
-    state.sourceLanguage = 'german'; // Reset to default
-    alert('Sie wurden abgemeldet.');
+    state.sourceLanguage = 'english'; // Reset to default ENGLISH
+    alert('You have been logged out.');
     showAuthArea();
 }
 
@@ -257,7 +257,7 @@ async function fetchUserProfile() {
         });
         if (!response.ok) {
             if (response.status === 401 || response.status === 403) {
-                alert('Sitzung abgelaufen oder nicht autorisiert. Bitte melden Sie sich erneut an.');
+                alert('Session expired or unauthorized. Please log in again.');
                 handleLogout();
                 return;
             }
@@ -267,9 +267,9 @@ async function fetchUserProfile() {
 
         // Update DOM elements
         if (xpDisplay) xpDisplay.textContent = `XP: ${profileData.xp}`;
-        if (dailyStreakDisplay) dailyStreakDisplay.textContent = `Tages-Streak: ${profileData.daily_streak} 🔥`;
+        if (dailyStreakDisplay) dailyStreakDisplay.textContent = `Daily Streak: ${profileData.daily_streak} 🔥`;
         state.highestStreak = profileData.highest_streak;
-        if (highestStreakDisplay) highestStreakDisplay.textContent = `Höchster Streak: 🔥 ${state.highestStreak}`;
+        if (highestStreakDisplay) highestStreakDisplay.textContent = `Highest Streak: 🔥 ${state.highestStreak}`;
 
         // Set user's preferred language from profile if available, otherwise use local or default
         if (profileData.preferred_source_language && profileData.preferred_source_language !== state.sourceLanguage) {
@@ -302,7 +302,7 @@ async function fetchVocabulary() {
         const response = await fetch(`/api/vocabulary?userId=${state.userId}&sourceLanguage=${state.sourceLanguage}`, { headers });
         if (!response.ok) {
             if (response.status === 401 || response.status === 403) {
-                alert('Sitzung abgelaufen oder nicht autorisiert. Bitte melden Sie sich erneut an.');
+                alert('Session expired or unauthorized. Please log in again.');
                 handleLogout();
                 return;
             }
@@ -310,14 +310,13 @@ async function fetchVocabulary() {
         }
         const data = await response.json();
         vocabulary = data.vocabulary;
-        // The sentences array will be empty from the backend, as sentences are AI generated
-        sentences = []; 
+        sentences = data.sentences;
         // Update sourceLanguage from backend response, ensuring consistency
         state.sourceLanguage = data.sourceLanguage || state.sourceLanguage;
         saveLanguagePreference(state.sourceLanguage); // Save to local storage
 
         console.log('Vocabulary loaded:', vocabulary);
-        console.log('Sentences loaded:', sentences); // This will show an empty array now
+        console.log('Sentences loaded:', sentences);
 
         await fetchUserProfile(); // Fetch profile to update XP/Streaks and potentially language preference
         showMainMenu();
@@ -339,7 +338,7 @@ function showMainMenu() {
 
 async function startExercise(mode) {
     if (vocabulary.length === 0) {
-        alert("Wortschatz ist noch nicht geladen. Bitte warten oder aktualisieren Sie die Seite.");
+        alert("Vocabulary not yet loaded. Please wait or refresh the page.");
         fetchVocabulary();
         return;
     }
@@ -363,29 +362,29 @@ async function startExercise(mode) {
 
     switch (mode) {
         case 'vocabulary':
-            exerciseTitle.textContent = `Wortschatz-Quiz (${getLanguageName(state.sourceLanguage)} - Amharisch)`;
+            exerciseTitle.textContent = `Vocabulary Quiz (${getLanguageName(state.sourceLanguage)} - Amharic)`;
             state.shuffledData = shuffleArray([...vocabulary]);
             displayVocabularyQuestion();
             break;
         case 'matching':
-            exerciseTitle.textContent = `Wort-Matching (${getLanguageName(state.sourceLanguage)} - Amharisch)`;
+            exerciseTitle.textContent = `Word Matching (${getLanguageName(state.sourceLanguage)} - Amharic)`;
             state.shuffledData = shuffleArray([...vocabulary]).slice(0, 5);
             state.matchedPairs = 0;
             displayMatchingExercise();
             break;
         case 'fill-blank':
-            exerciseTitle.textContent = `Lückentext (${getLanguageName(state.sourceLanguage)} - Amharisch)`;
+            exerciseTitle.textContent = `Fill in the Blank (${getLanguageName(state.sourceLanguage)} - Amharic)`;
             await fetchAndDisplayGeneratedFillBlankSentenceAI();
             break;
         case 'listening':
-            exerciseTitle.textContent = `Hörverständnis (${getLanguageName(state.sourceLanguage)} - Amharisch)`;
+            exerciseTitle.textContent = `Listening Practice (${getLanguageName(state.sourceLanguage)} - Amharic)`;
             state.shuffledData = shuffleArray([...vocabulary]);
             displayListeningQuestion();
             break;
         case 'speaking':
-            exerciseTitle.textContent = `Sprechübung (${getLanguageName(state.sourceLanguage)} - Amharisch)`;
+            exerciseTitle.textContent = `Speaking Practice (${getLanguageName(state.sourceLanguage)} - Amharic)`;
             if (!recognition) {
-                alert("Entschuldigung, Ihr Browser unterstützt keine Spracherkennung. Versuchen Sie Chrome oder Edge.");
+                alert("Sorry, your browser does not support speech recognition. Try Chrome or Edge.");
                 showMainMenu();
                 return;
             }
@@ -426,14 +425,14 @@ function handleAnswer(isCorrect, correctAnswerProvided = null, vocabularyId = nu
     if (isCorrect) {
         state.score++;
         state.currentStreak++;
-        feedbackMessage.textContent = 'Richtig!';
+        feedbackMessage.textContent = 'Correct!';
         feedbackMessage.style.color = '#22c55e';
     } else {
         state.currentStreak = 0;
         if (correctAnswerProvided) {
-            feedbackMessage.textContent = `Falsch! Die richtige Antwort war "${correctAnswerProvided}"`;
+            feedbackMessage.textContent = `Incorrect! The correct answer was "${correctAnswerProvided}"`;
         } else {
-            feedbackMessage.textContent = 'Falsch!';
+            feedbackMessage.textContent = 'Incorrect!';
         }
         feedbackMessage.style.color = '#ef4444';
     }
@@ -477,7 +476,7 @@ async function updateUserSRSOnServer(vocabularyId, isCorrect) {
 
         if (!response.ok) {
             if (response.status === 401 || response.status === 403) {
-                alert('Sitzung abgelaufen oder nicht autorisiert. Bitte melden Sie sich erneut an.');
+                alert('Session expired or unauthorized. Please log in again.');
                 handleLogout();
                 return;
             }
@@ -489,7 +488,7 @@ async function updateUserSRSOnServer(vocabularyId, isCorrect) {
 
     } catch (error) {
         console.error('Error updating SRS on server:', error);
-        feedbackMessage.textContent = 'Fehler beim Speichern des Fortschritts.';
+        feedbackMessage.textContent = 'Error saving progress.';
         feedbackMessage.style.color = '#ef4444';
     }
 }
@@ -499,10 +498,10 @@ async function updateUserSRSOnServer(vocabularyId, isCorrect) {
 
 function getLanguageName(langCode) {
     const names = {
-        'german': 'Deutsch',
-        'english': 'Englisch',
-        'french': 'Französisch',
-        'spanish': 'Spanisch'
+        'german': 'German',
+        'english': 'English',
+        'french': 'French',
+        'spanish': 'Spanish'
     };
     return names[langCode] || langCode; // Fallback to code if not found
 }
@@ -519,7 +518,7 @@ function displayVocabularyQuestion() {
     const correctAnswer = isAmharicToSource ? sourceWord : questionData.amharic;
     const optionSourceProp = isAmharicToSource ? `${state.sourceLanguage}_word` : 'amharic'; // Property name for options
 
-    document.getElementById('vocab-prompt').textContent = `Was bedeutet das Wort auf ${isAmharicToSource ? getLanguageName(state.sourceLanguage) : 'Amharisch'}?`;
+    document.getElementById('vocab-prompt').textContent = `What does the word mean in ${isAmharicToSource ? getLanguageName(state.sourceLanguage) : 'Amharic'}?`;
     document.getElementById('vocab-word').textContent = questionWord;
 
     let options = shuffleArray([correctAnswer, ...shuffleArray(vocabulary.filter(v => v[optionSourceProp] !== correctAnswer).map(v => v[optionSourceProp])).slice(0, 3)]);
@@ -544,7 +543,7 @@ function displayVocabularyQuestion() {
 }
 
 function displayMatchingExercise() {
-    state.selectedSourceWord = null; // Holds the selected source language word
+    state.selectedSourceWord = null; // Renamed from selectedGerman
     state.selectedAmharic = null;
     state.matchedPairs = 0;
 
@@ -554,8 +553,7 @@ function displayMatchingExercise() {
     amharicContainer.innerHTML = '';
 
     // Dynamically get source words
-    const sourceWordProp = `${state.sourceLanguage}_word`;
-    const sourceWords = shuffleArray(state.shuffledData.map(v => v[sourceWordProp]));
+    const sourceWords = shuffleArray(state.shuffledData.map(v => v[`${state.sourceLanguage}_word`]));
     const amharicWords = shuffleArray(state.shuffledData.map(v => v.amharic));
 
     sourceWords.forEach(word => {
@@ -593,8 +591,7 @@ function checkMatch() {
     const amharicText = state.selectedAmharic.textContent;
 
     // Find the correct pair in the vocabulary based on the selected source language
-    const sourceWordProp = `${state.sourceLanguage}_word`;
-    const correctPair = vocabulary.find(v => v[sourceWordProp] === sourceText && v.amharic === amharicText);
+    const correctPair = vocabulary.find(v => v[`${state.sourceLanguage}_word`] === sourceText && v.amharic === amharicText);
 
     if (correctPair) {
         state.matchedPairs++;
@@ -616,7 +613,7 @@ function checkMatch() {
         state.selectedAmharic = null;
 
         if (state.matchedPairs === state.shuffledData.length) {
-            feedbackMessage.textContent = 'Super gemacht! Alle Paare gefunden.';
+            feedbackMessage.textContent = 'Well done! All pairs found.';
             setTimeout(showResults, 1500);
         }
     }, 800);
@@ -624,7 +621,7 @@ function checkMatch() {
 
 async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
     try {
-        feedbackMessage.textContent = 'Generiere neue Sätze...';
+        feedbackMessage.textContent = 'Generating new sentences...';
         feedbackMessage.style.color = '#3b82f6';
         
         const optionsContainer = document.getElementById('fill-blank-options');
@@ -637,7 +634,6 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
         }
         const generatedData = await response.json(); // This will have properties like { english: "...", amharic: "...", blank: "...", vocabulary_id: ... }
 
-        // Check for the dynamically named property for the source sentence
         if (!generatedData || !generatedData.amharic || !generatedData[state.sourceLanguage] || !generatedData.blank || generatedData.vocabulary_id === undefined) {
             console.error("Incomplete AI data:", generatedData);
             throw new Error('Incomplete data received from AI sentence generation.');
@@ -659,12 +655,11 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
 
         // Get the correct source language word that corresponds to the blank
         // This word is what the user needs to select.
-        const sourceWordProp = `${state.sourceLanguage}_word`;
-        const correctAnswerSource = vocabulary.find(v => v.vocabulary_id === questionData.vocabulary_id)?.[sourceWordProp];
+        const correctAnswerSource = vocabulary.find(v => v.vocabulary_id === questionData.vocabulary_id)?.[`${state.sourceLanguage}_word`];
 
         if (!correctAnswerSource) {
-            console.error("Fehler: Das Lückenwort konnte nicht im lokalen Wortschatz gefunden werden (ID mismatch). Überspringe Frage.", questionData.blank, questionData.vocabulary_id);
-            feedbackMessage.textContent = "Fehler: Lückenwort nicht gefunden im Wortschatz. Überspringen.";
+            console.error("Error: The blank word could not be found in the local vocabulary (ID mismatch). Skipping question.", questionData.blank, questionData.vocabulary_id);
+            feedbackMessage.textContent = "Error: Blank word not found in vocabulary. Skipping.";
             feedbackMessage.style.color = '#ef4444';
             setTimeout(nextQuestion, 2000);
             return;
@@ -673,7 +668,7 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
         // Generate options for the blank. Include the correct answer and 3 random incorrect ones.
         const options = shuffleArray([
             correctAnswerSource,
-            ...shuffleArray(vocabulary.filter(v => v[sourceWordProp] !== correctAnswerSource).map(v => v[sourceWordProp])).slice(0, 3)
+            ...shuffleArray(vocabulary.filter(v => v[`${state.sourceLanguage}_word`] !== correctAnswerSource).map(v => v[`${state.sourceLanguage}_word`])).slice(0, 3)
         ]);
         
         options.forEach(opt => {
@@ -694,7 +689,7 @@ async function fetchAndDisplayGeneratedFillBlankSentenceAI() {
         feedbackMessage.textContent = '';
     } catch (error) {
         console.error('Error fetching/displaying AI generated sentence:', error);
-        feedbackMessage.textContent = 'Fehler beim Laden der KI-Sätze. Bitte versuchen Sie es erneut.';
+        feedbackMessage.textContent = 'Error loading AI sentences. Please try again.';
         feedbackMessage.style.color = '#ef4444';
         setTimeout(showMainMenu, 3000);
     }
@@ -747,7 +742,7 @@ function displaySpeakingExercise() {
                 setTimeout(nextQuestion, 1500);
             } else {
                 speechFeedback.style.color = '#ef4444';
-                feedbackMessage.textContent = `Falsch! Versuchen Sie es erneut. Das richtige Wort ist "${targetWord}"`;
+                feedbackMessage.textContent = `Incorrect! Try again. The correct word is "${targetWord}"`;
             }
         };
     }
@@ -785,7 +780,7 @@ async function showResults() {
 
             if (!response.ok) {
                 if (response.status === 401 || response.status === 403) {
-                    alert('Sitzung abgelaufen oder nicht autorisiert. Bitte melden Sie sich erneut an.');
+                    alert('Session expired or unauthorized. Please log in again.');
                     handleLogout();
                     return;
                 }
@@ -797,12 +792,12 @@ async function showResults() {
 
             // Update main menu displays with final values from backend
             if (xpDisplay) xpDisplay.textContent = `XP: ${data.totalXp}`;
-            if (dailyStreakDisplay) dailyStreakDisplay.textContent = `Tages-Streak: ${data.newDailyStreak} 🔥`;
-            if (highestStreakDisplay) highestStreakDisplay.textContent = `Höchster Streak: 🔥 ${data.newHighestStreak}`;
+            if (dailyStreakDisplay) dailyStreakDisplay.textContent = `Daily Streak: ${data.newDailyStreak} 🔥`;
+            if (highestStreakDisplay) highestStreakDisplay.textContent = `Highest Streak: 🔥 ${data.newHighestStreak}`;
 
         } catch (error) {
             console.error('Error marking exercise complete on server:', error);
-            alert('Fehler beim Speichern des Übungsabschlusses. XP und Streak wurden möglicherweise nicht aktualisiert.');
+            alert('Error saving exercise completion. XP and Streak may not have updated.');
         }
     }
 }
@@ -847,12 +842,12 @@ if (languageSelect) {
                     fetchVocabulary(); // Re-fetch vocabulary for the new language
                 } else {
                     const errorData = await response.json();
-                    alert(`Fehler beim Aktualisieren der Sprache: ${errorData.message || 'Unbekannter Fehler'}`);
+                    alert(`Error updating language: ${errorData.message || 'Unknown error'}`);
                     languageSelect.value = state.sourceLanguage; // Revert selection on error
                 }
             } catch (error) {
                 console.error('Error updating language preference:', error);
-                alert('Ein Netzwerkfehler ist aufgetreten. Sprache konnte nicht aktualisiert werden.');
+                alert('A network error occurred. Language could not be updated.');
                 languageSelect.value = state.sourceLanguage; // Revert selection on error
             }
         } else if (!state.userId) {
