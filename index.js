@@ -57,10 +57,10 @@ function calculateSrsProgress(currentSrsLevel, isCorrect) {
 }
 
 // Helper function to parse Gemini's specific output format
-// Note: The prompt to Gemini still uses "German: " as a label for the source language sentence,
+// The prompt tells Gemini to use "German: " as the label for the source language sentence,
 // but the content within will be in the requested source language.
 function parseGeminiSentenceOutput(text) {
-    const sourceLanguageSentenceMatch = text.match(/German: "(.*?)"/); // This will actually contain the sentence in the requested source language
+    const sourceLanguageSentenceMatch = text.match(/German: "(.*?)"/); // This will contain the sentence in the requested source language
     const amharicMatch = text.match(/Amharic: "(.*?)"/);
     const blankWordMatch = text.match(/BlankWord: "(.*?)"/); // This will be the blank in the source language
 
@@ -92,6 +92,7 @@ app.get('/api/generate-ai-sentence', async (req, res) => {
 
     try {
         // 1. Fetch a random word from the vocabulary table, ensuring it has a translation in the selected source language
+        // Select all source language columns to pass to the prompt
         const [vocabWords] = await db.query(
             `SELECT id, amharic_word, german_word, english_word, french_word, spanish_word FROM vocabulary WHERE ${sourceWordColumn} IS NOT NULL ORDER BY RAND() LIMIT 1`
         );
@@ -299,7 +300,7 @@ app.get('/api/vocabulary', async (req, res) => {
     const sourceLanguage = req.query.sourceLanguage || 'german'; // Default to german if not provided
 
     const sourceWordColumn = `${sourceLanguage}_word`; // e.g., 'english_word'
-    const sourceSentenceColumn = `${sourceLanguage}_sentence`; // e.g., 'english_sentence'
+    // No sourceSentenceColumn needed as sentences are AI generated
 
     // Basic validation for sourceLanguage
     if (!['german', 'english', 'french', 'spanish'].includes(sourceLanguage)) {
@@ -308,8 +309,11 @@ app.get('/api/vocabulary', async (req, res) => {
 
     try {
         // Fetch vocabulary based on the selected source language
+        // Select all source language columns for flexibility on frontend
         let vocabQuery = `
-            SELECT v.id AS vocabulary_id, v.amharic_word AS amharic, v.${sourceWordColumn} AS source_word,
+            SELECT v.id AS vocabulary_id, v.amharic_word AS amharic,
+                   v.german_word AS german_word, v.english_word AS english_word,
+                   v.french_word AS french_word, v.spanish_word AS spanish_word,
                    COALESCE(uvp.srs_level, 0) AS srs_level,
                    COALESCE(uvp.next_review_date, '1970-01-01') AS next_review_date
             FROM vocabulary v
@@ -321,16 +325,8 @@ app.get('/api/vocabulary', async (req, res) => {
         `;
         const [vocabulary] = await db.query(vocabQuery, [userId]);
 
-        // Fetch sentences based on the selected source language
-        let sentences = [];
-        try {
-            const [sentencesRows] = await db.query(
-                `SELECT amharic_sentence AS amharic, ${sourceSentenceColumn} AS source_sentence, blank_word AS blank_german FROM sentences WHERE ${sourceSentenceColumn} IS NOT NULL LIMIT 10`
-            );
-            sentences = sentencesRows;
-        } catch (sentencesError) {
-            console.warn(`Warning: Table 'sentences' column '${sourceSentenceColumn}' doesn't exist or is inaccessible. Returning empty sentences array.`, sentencesError.message);
-        }
+        // Sentences array will be empty as they are AI generated on demand for fill-blank
+        let sentences = []; 
 
         res.json({ vocabulary, sentences, sourceLanguage }); // Also send back the sourceLanguage for frontend confirmation
     } catch (error) {
