@@ -36,7 +36,7 @@ function calculateSrsProgress(currentSrsLevel, isCorrect) {
             nextIntervalDays = 6; // 6 days after second correct
         } else {
             nextIntervalDays = Math.round(currentSrsLevel * 2.5);
-            if (nextIntervalDays < currentSrsLevel + 1) nextIntervalDays = currentSrsLevel + 1;
+            if (nextIntervalDays < currentSrsLevel + 1) nextIntervalDays = currentInterval + 1; // Ensure it keeps increasing
         }
     } else {
         newSrsLevel = 0; // Reset level on incorrect answer
@@ -166,13 +166,11 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
         let xpAwarded = 0;
         if (isCorrect) {
             xpAwarded = 10; // Award 10 XP for a correct answer
-            // FIX: Changed 'id' to 'user_id' in WHERE clause
             await db.query('UPDATE users SET xp = xp + ? WHERE user_id = ?', [xpAwarded, userId]);
         }
 
         // 5. Update Daily Streak Logic
         const today = moment().format('YYYY-MM-DD');
-        // FIX: Changed 'id' to 'user_id' in WHERE clause
         let [userRows] = await db.query('SELECT daily_streak, last_learning_date, highest_streak FROM users WHERE user_id = ?', [userId]);
         let user = userRows[0];
 
@@ -193,7 +191,6 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
             if (newDailyStreak > newHighestStreak) {
                 newHighestStreak = newDailyStreak;
             }
-            // FIX: Changed 'id' to 'user_id' in WHERE clause
             await db.query('UPDATE users SET daily_streak = ?, last_learning_date = ?, highest_streak = ? WHERE user_id = ?',
                 [newDailyStreak, today, newHighestStreak, userId]);
         }
@@ -212,7 +209,6 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
 app.get('/api/user/profile/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
-        // FIX: Changed 'id' to 'user_id' in WHERE clause
         const [userRows] = await db.query('SELECT username, xp, daily_streak, highest_streak FROM users WHERE user_id = ?', [userId]);
         if (userRows.length === 0) {
             return res.status(404).json({ message: 'User not found.' });
@@ -237,7 +233,7 @@ app.get('/api/vocabulary', async (req, res) => {
             FROM vocabulary v
             LEFT JOIN user_vocabulary_progress uvp ON v.id = uvp.vocabulary_id AND uvp.user_id = ?
             WHERE uvp.next_review_date IS NULL OR uvp.next_review_date <= CURDATE()
-            ORDER BY uvp.next_review_date ASC NULLS FIRST, RAND()
+            ORDER BY (uvp.next_review_date IS NULL) DESC, uvp.next_review_date ASC, RAND()
             LIMIT 20; -- Limit to a reasonable number of words for a session
         `;
         let params = [userId];
