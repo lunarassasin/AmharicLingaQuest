@@ -238,9 +238,9 @@ app.post('/api/vocabulary/update_srs', async (req, res) => {
             `INSERT INTO user_vocabulary_progress (user_id, vocabulary_id, srs_level, next_review_date, last_reviewed_at)
              VALUES (?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
-                srs_level = VALUES(srs_level),
-                next_review_date = VALUES(next_review_date),
-                last_reviewed_at = VALUES(last_reviewed_at)`,
+                 srs_level = VALUES(srs_level),
+                 next_review_date = VALUES(next_review_date),
+                 last_reviewed_at = VALUES(last_reviewed_at)`,
             [userId, vocabularyId, newSrsLevel, nextReviewDate, lastReviewedAt]
         );
 
@@ -305,7 +305,7 @@ app.post('/api/exercise/complete', async (req, res) => {
         res.json({
             success: true,
             xpAwarded: xpAwardedForExercise, // XP awarded for this specific exercise
-            totalXp: updatedUser.xp,        // User's total XP
+            totalXp: updatedUser.xp,       // User's total XP
             newDailyStreak: updatedUser.daily_streak,
             newHighestStreak: updatedUser.highest_streak,
             streakIncreasedToday: streakIncreased // Indicate if streak was affected today
@@ -334,7 +334,7 @@ app.get('/api/user/profile/:userId', async (req, res) => {
     }
 });
 
-// --- NEW: Endpoint to update user's preferred source language ---
+// --- NEW: API Endpoint to update user's preferred source language ---
 app.post('/api/user/update_language', async (req, res) => {
     const { userId, language } = req.body;
     if (!userId || !language) {
@@ -354,10 +354,23 @@ app.post('/api/user/update_language', async (req, res) => {
 });
 
 
-// --- UPDATED: API Endpoint to Fetch Vocabulary (with SRS logic and dynamic language) ---
+// --- NEW: API Endpoint to Fetch All Lessons ---
+app.get('/api/lessons', async (req, res) => {
+    try {
+        const [lessons] = await db.query('SELECT id, name, description FROM lessons ORDER BY name ASC');
+        res.json(lessons);
+    } catch (error) {
+        console.error('Error fetching lessons:', error);
+        res.status(500).json({ message: 'Failed to fetch lessons.', error: error.message });
+    }
+});
+
+
+// --- UPDATED: API Endpoint to Fetch Vocabulary (with SRS logic, dynamic language, and optional lesson filter) ---
 app.get('/api/vocabulary', async (req, res) => {
     const userId = req.query.userId;
     const sourceLanguage = req.query.sourceLanguage || 'english'; // Default to ENGLISH if not provided
+    const lessonId = req.query.lessonId; // NEW: Get lessonId from query parameters
 
     const sourceWordColumn = `${sourceLanguage}_word`; // e.g., 'english_word'
     // No sourceSentenceColumn needed as sentences are AI generated
@@ -378,15 +391,25 @@ app.get('/api/vocabulary', async (req, res) => {
                    COALESCE(uvp.next_review_date, '1970-01-01') AS next_review_date
             FROM vocabulary v
             LEFT JOIN user_vocabulary_progress uvp ON v.id = uvp.vocabulary_id AND uvp.user_id = ?
-            WHERE v.${sourceWordColumn} IS NOT NULL -- Only fetch words that have a translation in the selected source language
-              AND (uvp.next_review_date IS NULL OR uvp.next_review_date <= CURDATE())
-            ORDER BY (uvp.next_review_date IS NULL) DESC, uvp.next_review_date ASC, RAND()
-            LIMIT 20;
-        `;
-        const [vocabulary] = await db.query(vocabQuery, [userId]);
+            WHERE v.${sourceWordColumn} IS NOT NULL`; // Only fetch words that have a translation in the selected source language
+        
+        const queryParams = [userId];
+
+        // NEW: Add lesson filter if lessonId is provided
+        if (lessonId) {
+            vocabQuery += ` AND v.lesson_id = ?`;
+            queryParams.push(lessonId);
+        }
+
+        vocabQuery += `
+             AND (uvp.next_review_date IS NULL OR uvp.next_review_date <= CURDATE())
+             ORDER BY (uvp.next_review_date IS NULL) DESC, uvp.next_review_date ASC, RAND()
+             LIMIT 20;
+         `;
+        const [vocabulary] = await db.query(vocabQuery, queryParams); // Pass queryParams array
 
         // Sentences array will be empty as they are AI generated on demand for fill-blank
-        let sentences = []; 
+        let sentences = [];
 
         res.json({ vocabulary, sentences, sourceLanguage }); // Also send back the sourceLanguage for frontend confirmation
     } catch (error) {
